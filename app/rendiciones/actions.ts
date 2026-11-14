@@ -63,7 +63,7 @@ export async function registrarGasto(prevState: FormState | null, formData: Form
       }
       const { data: fondoCheck } = await supabase
         .from('fondos_asignados')
-        .select('id, estado')
+        .select('id, monto_asignado, monto_devuelto, estado')
         .eq('id', fondoId)
         .eq('user_id', user.id)
         .single();
@@ -71,6 +71,24 @@ export async function registrarGasto(prevState: FormState | null, formData: Form
       if (!fondoCheck || fondoCheck.estado === 'cerrado') {
         return { error: 'El fondo asignado seleccionado ya no está activo.' };
       }
+
+      // Validar saldo restante en servidor
+      const { data: gastosFondo } = await supabase
+        .from('gastos')
+        .select('monto')
+        .eq('fondo_id', fondoId)
+        .eq('tipo_rendicion', 'anticipo');
+
+      const totalRendido = (gastosFondo || []).reduce((sum, g) => sum + g.monto, 0);
+      const saldoRestante = fondoCheck.monto_asignado - totalRendido - (fondoCheck.monto_devuelto || 0);
+
+      if (monto > saldoRestante) {
+        const saldoFmt = new Intl.NumberFormat('es-CL').format(Math.max(0, saldoRestante));
+        return {
+          error: `No hay fondos suficientes en tu viático actual (Saldo disponible: $${saldoFmt}). Tienes dos opciones: ajusta el monto al saldo restante, o selecciona la categoría 'Gasto Propio (Solicitar Reembolso)' para este gasto.`,
+        };
+      }
+
       estadoGasto = 'aplicado_a_fondo';
       finalFondoId = fondoId;
     } else {
@@ -258,6 +276,33 @@ export async function modificarGasto(
         updateData.fondo_id = fId;
         if (gastoActual.estado !== 'cerrado') {
           updateData.estado = 'aplicado_a_fondo';
+        }
+
+        if (fId) {
+          const { data: fCheck } = await supabase
+            .from('fondos_asignados')
+            .select('id, monto_asignado, monto_devuelto, estado')
+            .eq('id', fId)
+            .single();
+
+          if (fCheck) {
+            const { data: otrosGastos } = await supabase
+              .from('gastos')
+              .select('monto')
+              .eq('fondo_id', fId)
+              .eq('tipo_rendicion', 'anticipo')
+              .neq('id', gastoId);
+
+            const totalOtros = (otrosGastos || []).reduce((sum, g) => sum + g.monto, 0);
+            const saldoDisp = fCheck.monto_asignado - totalOtros - (fCheck.monto_devuelto || 0);
+
+            if (monto > saldoDisp) {
+              const saldoFmt = new Intl.NumberFormat('es-CL').format(Math.max(0, saldoDisp));
+              return {
+                error: `No hay fondos suficientes en el viático actual (Saldo disponible: $${saldoFmt}). Ajusta el monto o cámbialo a Reembolso.`,
+              };
+            }
+          }
         }
       } else {
         updateData.fondo_id = null;
@@ -448,6 +493,50 @@ export async function devolverSobrante(
     };
   } catch (err: any) {
     console.error('Error inesperado en devolverSobrante:', err);
+    return { error: `Error del servidor: ${err.message || 'Error desconocido'}` };
+  }
+}
+
+export async function cambiarPasswordEmpleado(
+  prevState: FormState | null,
+  formData: FormData
+): Promise<FormState> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { error: 'No tienes una sesión activa. Inicia sesión nuevamente.' };
+    }
+
+    const password = (formData.get('password') as string)?.trim();
+    const confirmPassword = (formData.get('confirm_password') as string)?.trim();
+
+    if (!password || password.length < 6) {
+      return { error: 'La nueva contraseña debe tener al menos 6 caracteres.' };
+    }
+
+    if (password !== confirmPassword) {
+      return { error: 'Las contraseñas no coinciden. Verifícalas e inténtalo de nuevo.' };
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password,
+    });
+
+    if (error) {
+      console.error('Error al actualizar contraseña:', error);
+      return { error: `Error al actualizar contraseña: ${error.message}` };
+    }
+
+    return {
+      success: true,
+      message: 'Contraseña actualizada correctamente.',
+    };
+  } catch (err: any) {
+    console.error('Error inesperado al cambiar contraseña:', err);
     return { error: `Error del servidor: ${err.message || 'Error desconocido'}` };
   }
 }

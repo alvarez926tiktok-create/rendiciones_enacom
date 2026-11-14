@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { signOut } from '@/app/auth/actions';
+import HeaderEmpleado from '@/components/HeaderEmpleado';
 import FormularioGasto from '@/components/FormularioGasto';
 import HistorialGastos, { type GastoItem } from '@/components/HistorialGastos';
 import PanelSaldosEmpleado, { type FondoAsignadoActivo } from '@/components/PanelSaldosEmpleado';
@@ -208,35 +208,12 @@ export default async function RendicionesPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 pb-12">
-      {/* Barra superior Mobile-First */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3 shadow-sm">
-        <div className="max-w-md mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="h-10 px-2 py-1 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
-              <img src="/logo-enacom.png" alt="ENACOM" className="h-7 w-auto object-contain" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h1 className="text-sm font-black text-slate-900 leading-none">
-                  {profile?.nombre || 'Colaborador'}
-                </h1>
-              </div>
-              <span className="text-[11px] font-semibold text-slate-500">
-                {profile?.area || 'Terreno'}
-              </span>
-            </div>
-          </div>
-
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg px-2.5 py-1.5 transition-colors"
-            >
-              Cerrar Sesión
-            </button>
-          </form>
-        </div>
-      </header>
+      {/* Barra superior Mobile-First con Autogestión de Cuenta */}
+      <HeaderEmpleado
+        nombre={profile?.nombre}
+        area={profile?.area}
+        email={profile?.email}
+      />
 
       {/* Contenido principal Mobile-First */}
       <main className="max-w-md mx-auto px-4 pt-4 space-y-4">

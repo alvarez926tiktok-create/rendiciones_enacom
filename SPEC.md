@@ -198,3 +198,13 @@ Registro de pagos parciales o abonos realizados por la empresa para cubrir gasto
    - Tabla `abonos_reembolsos` para pagos parciales escalonados con comprobante bancario.
    - Modal de Cartola / Detalle con trazabilidad cronológica completa para empleados y administradores.
    - Acciones rápidas administrativas de abono y cierre definitivo desde la cartola.
+
+7. **Fase 7: Control de Saldo en Viáticos y Autogestión de Contraseña**
+   - **Validación de Saldo en Fondos Asignados (Tope de Viáticos):**
+     - Cálculo reactivo en tiempo real del saldo disponible (`monto_asignado - boletas_descontadas - monto_devuelto`).
+     - Alerta visual y bloqueo preventivo mediante modal si el monto supera el saldo disponible.
+     - Botones de acción rápida: ajuste automático del monto al saldo disponible exacto o cambio de modalidad a "Gasto Propio (Reembolso)".
+     - Validación atómica en servidor (`registrarGasto` y `modificarGasto`) para garantizar consistencia y prevenir sobregiros.
+   - **Autogestión de Contraseña de Empleados:**
+     - Botón de gestión en cabecera del empleado con modal seguro para ingreso y confirmación de nueva contraseña (mínimo 6 caracteres).
+     - Actualización mediante Server Action usando `supabase.auth.updateUser({ password })`.
