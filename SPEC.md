@@ -66,9 +66,12 @@ Desarrollar una aplicación web **Mobile-First** ultra simple y rápida para la 
     - Por **Categoría**.
   - **Tabla de Rendiciones:** Registro detallado de todas las rendiciones con datos del empleado, área, fecha, categoría, comprobante y monto.
   - **Modal Visor de Comprobantes:** Visualización en alta resolución de la foto de la boleta o factura bajo demanda.
+  - **Exportación de Informes Ejecutivos en PDF:**
+    - Botón de exportación rápida a PDF reactivo a los filtros activos (por Área, Colaborador, Rango de Fecha y Categoría).
+    - Maquetado corporativo para impresión (`@media print` nativo sin librerías pesadas): membrete ENACOM, parámetros de auditoría filtrados, tarjetas de sumatoria total y tabla completa de rendiciones.
   - **Módulo de Gestión de Personal (Usuarios):**
     - Creación directa de usuarios (Nombre, Email, Contraseña temporal, Rol, Área).
-    - Actualización y cambio de contraseña seguro de colaboradores mediante Supabase Admin API (`updateUserById`).
+    - Edición completa de colaboradores: actualización de Nombre, Email, Rol, Área y Contraseña (opcional) mediante Supabase Admin API (`updateUserById`) y sincronización con `public.profiles`.
 
 ---
 

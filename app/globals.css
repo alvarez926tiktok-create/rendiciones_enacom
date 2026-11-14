@@ -14,3 +14,21 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+@media print {
+  @page {
+    margin: 1.2cm;
+    size: portrait;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Asegurar que los colores de fondos de badges y tablas se impriman correctamente */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

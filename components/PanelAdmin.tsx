@@ -102,6 +102,31 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
     }
   };
 
+  // Texto legible del período para el informe PDF
+  const getTextoPeriodo = () => {
+    switch (selectedRangoFecha) {
+      case '7d':
+        return 'Últimos 7 días';
+      case '15d':
+        return 'Últimos 15 días';
+      case '30d':
+        return 'Último mes (30 días)';
+      case 'mes_particular':
+        return `Mes específico: ${selectedMesParticular}`;
+      case '1y':
+        return 'Último año (365 días)';
+      default:
+        return 'Histórico Completo';
+    }
+  };
+
+  // Texto legible del colaborador para el informe PDF
+  const getTextoColaborador = () => {
+    if (selectedUser === 'Todos') return 'Todos los colaboradores';
+    const p = profiles.find((item) => item.id === selectedUser);
+    return p ? `${p.nombre} (${p.area})` : 'Colaborador Específico';
+  };
+
   // Filtrado reactivo de gastos (Fecha + Área + Usuario + Categoría)
   const filteredGastos = useMemo(() => {
     const now = new Date();
@@ -226,50 +251,90 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
 
   return (
     <div className="space-y-6">
+      {/* Membrete Oficial para Exportación PDF (Solo se ve al imprimir / guardar PDF) */}
+      <div className="hidden print:block border-b-2 border-slate-900 pb-4 mb-4">
+        <div className="flex justify-between items-start">
+          <div>
+            <span className="text-xs font-black text-slate-500 uppercase tracking-widest block">
+              ENACOM - Control Financiero
+            </span>
+            <h1 className="text-xl font-black text-slate-900 tracking-tight mt-0.5">
+              INFORME CONSOLIDADO DE RENDICIÓN DE GASTOS
+            </h1>
+            <p className="text-xs text-slate-600">
+              Reporte generado para Auditoría y Gerencia
+            </p>
+          </div>
+          <div className="text-right text-xs text-slate-700">
+            <p><strong>Fecha de Emisión:</strong> {formatDate(new Date().toISOString())}</p>
+          </div>
+        </div>
+
+        {/* Resumen de Filtros Aplicados */}
+        <div className="mt-3 p-3 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div>
+            <span className="font-bold text-slate-500 block text-[10px] uppercase">Área</span>
+            <span className="font-black text-slate-900">{selectedArea}</span>
+          </div>
+          <div>
+            <span className="font-bold text-slate-500 block text-[10px] uppercase">Período</span>
+            <span className="font-black text-slate-900">{getTextoPeriodo()}</span>
+          </div>
+          <div>
+            <span className="font-bold text-slate-500 block text-[10px] uppercase">Colaborador</span>
+            <span className="font-black text-slate-900">{getTextoColaborador()}</span>
+          </div>
+          <div>
+            <span className="font-bold text-slate-500 block text-[10px] uppercase">Categoría</span>
+            <span className="font-black text-slate-900">{selectedCategoria}</span>
+          </div>
+        </div>
+      </div>
+
       {/* 1. Tarjetas de Sumatorias Dinámicas */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-3 print:gap-3">
         {/* Total Rendido */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm print:p-4 print:border-slate-300">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
             Total Rendido
           </span>
-          <p className="text-3xl font-black text-slate-900 mt-1">
+          <p className="text-3xl font-black text-slate-900 mt-1 print:text-2xl">
             {formatCLP(totalRendido)}
           </p>
-          <span className="text-[11px] font-medium text-slate-500 mt-1 block">
+          <span className="text-[11px] font-medium text-slate-500 mt-1 block print:hidden">
             {hasActiveFilters ? 'Suma según filtros activos' : 'Suma total histórica'}
           </span>
         </div>
 
         {/* Cantidad de Boletas */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm print:p-4 print:border-slate-300">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
             Comprobantes Registrados
           </span>
-          <p className="text-3xl font-black text-sky-600 mt-1">
+          <p className="text-3xl font-black text-sky-600 mt-1 print:text-2xl print:text-slate-900">
             {cantidadBoletas}
           </p>
-          <span className="text-[11px] font-medium text-slate-500 mt-1 block">
+          <span className="text-[11px] font-medium text-slate-500 mt-1 block print:hidden">
             {cantidadBoletas === 1 ? '1 rendición encontrada' : `${cantidadBoletas} rendiciones encontradas`}
           </span>
         </div>
 
         {/* Promedio por Rendición */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm sm:col-span-2 lg:col-span-1">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm sm:col-span-2 lg:col-span-1 print:p-4 print:border-slate-300">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
             Gasto Promedio por Boleta
           </span>
-          <p className="text-3xl font-black text-emerald-600 mt-1">
+          <p className="text-3xl font-black text-emerald-600 mt-1 print:text-2xl print:text-slate-900">
             {cantidadBoletas > 0 ? formatCLP(Math.round(totalRendido / cantidadBoletas)) : '$0'}
           </p>
-          <span className="text-[11px] font-medium text-slate-500 mt-1 block">
+          <span className="text-[11px] font-medium text-slate-500 mt-1 block print:hidden">
             Cálculo reactivo en tiempo real
           </span>
         </div>
       </section>
 
-      {/* 2. Desglose Rápido por Área (Pills compactas sin gráficos pesados) */}
-      <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm">
+      {/* 2. Desglose Rápido por Área (Oculto en impresión para formato ejecutivo) */}
+      <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm print:hidden">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600">
             Acumulado por Área de la Empresa
@@ -305,15 +370,15 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
         </div>
       </section>
 
-      {/* 3. Barra de Filtros Avanzados (Fecha + Área + Usuario + Categoría) */}
-      <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-4">
+      {/* 3. Barra de Filtros Avanzados (Oculto en impresión) */}
+      <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-4 print:hidden">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
           <div>
             <h2 className="text-sm font-bold text-slate-900">
               Filtros Avanzados de Búsqueda
             </h2>
             <p className="text-xs text-slate-400">
-              Ajusta los parámetros para cuadratura financiera y auditoría.
+              Ajusta los parámetros para cuadratura financiera, auditoría o exportación.
             </p>
           </div>
           {hasActiveFilters && (
@@ -434,14 +499,31 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
       </section>
 
       {/* 4. Tabla y Tarjetas de Rendiciones */}
-      <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="text-base font-black text-slate-900">
-            Registro Consolidado de Rendiciones
-          </h2>
-          <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-            {filteredGastos.length} registros
-          </span>
+      <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm print:border-none print:shadow-none">
+        <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden">
+          <div>
+            <h2 className="text-base font-black text-slate-900">
+              Registro Consolidado de Rendiciones
+            </h2>
+            <p className="text-xs text-slate-500">
+              Mostrando {filteredGastos.length} comprobantes coincidentes
+            </p>
+          </div>
+
+          {/* Botón de Exportar Informe PDF */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => window.print()}
+              disabled={filteredGastos.length === 0}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-black text-white text-xs font-bold shadow-md transition-colors disabled:opacity-40"
+            >
+              <svg className="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              Exportar Informe PDF
+            </button>
+          </div>
         </div>
 
         {filteredGastos.length === 0 ? (
@@ -453,55 +535,55 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
           </div>
         ) : (
           <>
-            {/* Vista de Escritorio: Tabla */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-700">
-                <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+            {/* Tabla para Escritorio y Formato Impreso */}
+            <div className="overflow-x-auto print:block">
+              <table className="w-full text-left text-sm text-slate-700 print:text-xs print:border print:border-slate-300">
+                <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 print:bg-slate-100 print:text-black">
                   <tr>
-                    <th scope="col" className="px-5 py-3.5">
+                    <th scope="col" className="px-5 py-3.5 print:px-3 print:py-2">
                       Fecha / Hora
                     </th>
-                    <th scope="col" className="px-5 py-3.5">
+                    <th scope="col" className="px-5 py-3.5 print:px-3 print:py-2">
                       Colaborador
                     </th>
-                    <th scope="col" className="px-5 py-3.5">
+                    <th scope="col" className="px-5 py-3.5 print:px-3 print:py-2">
                       Área
                     </th>
-                    <th scope="col" className="px-5 py-3.5">
+                    <th scope="col" className="px-5 py-3.5 print:px-3 print:py-2">
                       Categoría
                     </th>
-                    <th scope="col" className="px-5 py-3.5">
+                    <th scope="col" className="px-5 py-3.5 print:px-3 print:py-2">
                       N° Comprobante
                     </th>
-                    <th scope="col" className="px-5 py-3.5 text-right">
+                    <th scope="col" className="px-5 py-3.5 text-right print:px-3 print:py-2">
                       Monto
                     </th>
-                    <th scope="col" className="px-5 py-3.5 text-center">
+                    <th scope="col" className="px-5 py-3.5 text-center print:hidden">
                       Comprobante
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 print:divide-slate-200">
                   {filteredGastos.map((gasto) => (
                     <tr
                       key={gasto.id}
-                      className="hover:bg-slate-50/70 transition-colors"
+                      className="hover:bg-slate-50/70 transition-colors print:bg-transparent"
                     >
-                      <td className="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap">
+                      <td className="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap print:px-3 print:py-2 print:text-slate-800">
                         {formatDate(gasto.created_at)}
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-5 py-3.5 print:px-3 print:py-2">
                         <span className="font-bold text-slate-900 block leading-tight">
                           {gasto.nombre_empleado}
                         </span>
-                        <span className="text-[11px] text-slate-400 block">
+                        <span className="text-[11px] text-slate-400 block print:text-slate-600">
                           {gasto.email_empleado}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 text-xs font-medium text-slate-600 whitespace-nowrap">
+                      <td className="px-5 py-3.5 text-xs font-medium text-slate-600 whitespace-nowrap print:px-3 print:py-2 print:text-slate-800">
                         {gasto.area_empleado}
                       </td>
-                      <td className="px-5 py-3.5 whitespace-nowrap">
+                      <td className="px-5 py-3.5 whitespace-nowrap print:px-3 print:py-2">
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getCategoriaBadgeClass(
                             gasto.categoria
@@ -510,13 +592,13 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
                           {gasto.categoria}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 font-mono text-xs font-semibold text-slate-800 whitespace-nowrap">
+                      <td className="px-5 py-3.5 font-mono text-xs font-semibold text-slate-800 whitespace-nowrap print:px-3 print:py-2">
                         #{gasto.numero_comprobante}
                       </td>
-                      <td className="px-5 py-3.5 font-black text-slate-900 text-right whitespace-nowrap text-base">
+                      <td className="px-5 py-3.5 font-black text-slate-900 text-right whitespace-nowrap text-base print:text-xs print:px-3 print:py-2">
                         {formatCLP(gasto.monto)}
                       </td>
-                      <td className="px-5 py-3.5 text-center whitespace-nowrap">
+                      <td className="px-5 py-3.5 text-center whitespace-nowrap print:hidden">
                         <button
                           type="button"
                           onClick={() => handleVerComprobante(gasto)}
@@ -547,11 +629,23 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
                     </tr>
                   ))}
                 </tbody>
+                {/* Fila de Totales al final de la tabla */}
+                <tfoot className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300">
+                  <tr>
+                    <td colSpan={5} className="px-5 py-3.5 text-left text-xs uppercase tracking-wider print:px-3 print:py-2">
+                      Total Consolidado ({filteredGastos.length} comprobantes)
+                    </td>
+                    <td className="px-5 py-3.5 text-right text-base print:text-xs print:px-3 print:py-2 text-slate-900">
+                      {formatCLP(totalRendido)}
+                    </td>
+                    <td className="print:hidden"></td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
 
-            {/* Vista Móvil: Tarjetas apiladas */}
-            <div className="md:hidden divide-y divide-slate-100 p-3 space-y-3">
+            {/* Vista Móvil: Tarjetas apiladas (Solo visible en pantallas pequeñas, oculta en impresión) */}
+            <div className="md:hidden divide-y divide-slate-100 p-3 space-y-3 print:hidden">
               {filteredGastos.map((gasto) => (
                 <div
                   key={gasto.id}
@@ -604,7 +698,7 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
       {/* 5. Modal Visor de Comprobante en Alta Resolución */}
       {modalGasto && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 print:hidden"
           onClick={closeModal}
         >
           <div

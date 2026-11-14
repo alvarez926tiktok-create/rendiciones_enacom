@@ -121,6 +121,97 @@ export async function crearUsuario(
   }
 }
 
+export async function editarUsuario(
+  prevState: UserActionState | null,
+  formData: FormData
+): Promise<UserActionState> {
+  const isAdmin = await verificarAdmin();
+  if (!isAdmin) {
+    return { error: 'Acceso no autorizado. Se requieren permisos de administrador.' };
+  }
+
+  const userId = formData.get('userId') as string;
+  const nombre = (formData.get('nombre') as string)?.trim();
+  const email = (formData.get('email') as string)?.trim().toLowerCase();
+  const rol = (formData.get('rol') as string)?.trim();
+  const area = (formData.get('area') as string)?.trim();
+  const newPassword = (formData.get('newPassword') as string)?.trim();
+
+  if (!userId) {
+    return { error: 'Identificador de usuario inválido.' };
+  }
+  if (!nombre) {
+    return { error: 'El nombre completo es obligatorio.' };
+  }
+  if (!email || !email.includes('@')) {
+    return { error: 'El correo electrónico no es válido.' };
+  }
+  if (rol !== 'admin' && rol !== 'empleado') {
+    return { error: 'El rol debe ser "admin" o "empleado".' };
+  }
+  if (!AREAS_VALIDAS.includes(area as any)) {
+    return { error: 'El área seleccionada no es válida.' };
+  }
+  if (newPassword && newPassword.length < 6) {
+    return { error: 'Si deseas cambiar la contraseña, debe tener al menos 6 caracteres.' };
+  }
+
+  try {
+    const supabaseAdmin = createAdminClient();
+
+    // 1. Actualizar en Supabase Auth
+    const authUpdatePayload: Record<string, any> = {
+      email,
+      user_metadata: {
+        nombre,
+        rol,
+        area,
+      },
+    };
+
+    if (newPassword) {
+      authUpdatePayload.password = newPassword;
+    }
+
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
+      userId,
+      authUpdatePayload
+    );
+
+    if (authError) {
+      return { error: `Error al actualizar en Auth: ${authError.message}` };
+    }
+
+    // 2. Actualizar en public.profiles
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        nombre,
+        email,
+        rol,
+        area,
+      })
+      .eq('id', userId);
+
+    if (profileError) {
+      return { error: `Error al actualizar perfil: ${profileError.message}` };
+    }
+
+    revalidatePath('/admin');
+    return {
+      success: true,
+      message: `Colaborador ${nombre} actualizado correctamente.${newPassword ? ' (Contraseña actualizada)' : ''}`,
+    };
+  } catch (err: any) {
+    console.error('Error en editarUsuario:', err);
+    return {
+      error:
+        err.message ||
+        'Error de configuración del servidor. Verifica que SUPABASE_SERVICE_ROLE_KEY esté configurada.',
+    };
+  }
+}
+
 export async function actualizarPassword(
   prevState: UserActionState | null,
   formData: FormData

@@ -15,7 +15,7 @@ export default function AdminViewContainer({ gastos, profiles }: AdminViewContai
   return (
     <div className="space-y-6">
       {/* Selector de Pestañas Principal */}
-      <div className="flex border-b border-slate-200">
+      <div className="flex border-b border-slate-200 print:hidden">
         <button
           type="button"
           onClick={() => setActiveTab('rendiciones')}

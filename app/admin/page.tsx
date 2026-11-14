@@ -64,7 +64,7 @@ export default async function AdminDashboardPage() {
   return (
     <div className="min-h-screen bg-slate-100 pb-12">
       {/* Barra superior de Administrador */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3.5 shadow-sm">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3.5 shadow-sm print:hidden">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-amber-500 flex items-center justify-center text-white font-black text-lg shadow-sm">
