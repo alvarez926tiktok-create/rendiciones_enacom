@@ -343,11 +343,11 @@ export default function ModalCartolaDetalle({
                       <p className="text-xs text-slate-600">
                         Boleta #{gasto.numero_comprobante} por valor de <strong className="text-slate-900">{formatCLP(gasto.monto)}</strong> en categoría <strong>{gasto.categoria}</strong>.
                       </p>
-                      {gasto.signedUrl && onVerFoto && (
+                      {onVerFoto && (gasto.signedUrl || gasto.foto_url) && (
                         <div className="pt-1">
                           <button
                             type="button"
-                            onClick={() => onVerFoto(gasto.signedUrl!, `Boleta #${gasto.numero_comprobante}`)}
+                            onClick={() => onVerFoto(gasto.signedUrl || gasto.foto_url, `Boleta #${gasto.numero_comprobante}`)}
                             className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-bold hover:text-sky-600 shadow-sm"
                           >
                             Ver Foto de Boleta
@@ -404,11 +404,11 @@ export default function ModalCartolaDetalle({
                           </span>
                           <span className="text-[11px] text-slate-400">Conciliado</span>
                         </div>
-                        {gasto.signedPagoUrl && onVerFoto && (
+                        {onVerFoto && (gasto.signedPagoUrl || gasto.comprobante_pago_url) && (
                           <div className="pt-1">
                             <button
                               type="button"
-                              onClick={() => onVerFoto(gasto.signedPagoUrl!, `Transferencia Reembolso`)}
+                              onClick={() => onVerFoto(gasto.signedPagoUrl || gasto.comprobante_pago_url!, `Transferencia Reembolso`)}
                               className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-800 text-xs font-bold hover:bg-emerald-50 shadow-sm"
                             >
                               Ver Comprobante de Transferencia
@@ -468,10 +468,10 @@ export default function ModalCartolaDetalle({
                             </span>
                             <span className="text-[11px] text-slate-400">{formatDate(g.created_at)}</span>
                           </div>
-                          {g.signedUrl && onVerFoto && (
+                          {onVerFoto && (g.signedUrl || g.foto_url) && (
                             <button
                               type="button"
-                              onClick={() => onVerFoto(g.signedUrl!, `Boleta #${g.numero_comprobante}`)}
+                              onClick={() => onVerFoto(g.signedUrl || g.foto_url, `Boleta #${g.numero_comprobante}`)}
                               className="text-[11px] font-bold text-sky-700 hover:underline pt-0.5 block"
                             >
                               Ver Boleta Adjunta
@@ -493,12 +493,15 @@ export default function ModalCartolaDetalle({
                           </span>
                           <span className="text-[11px] text-emerald-700 font-bold">Transferido a Empresa</span>
                         </div>
-                        {fondo.signedDevolucionUrl && onVerFoto && (
+                        {onVerFoto && (fondo.signedDevolucionUrl || fondo.comprobante_devolucion_url) && (
                           <div className="pt-1">
                             <button
                               type="button"
                               onClick={() =>
-                                onVerFoto(fondo.signedDevolucionUrl!, `Devolución de Sobrante - ${fondo.motivo}`)
+                                onVerFoto(
+                                  fondo.signedDevolucionUrl || fondo.comprobante_devolucion_url!,
+                                  `Devolución de Sobrante - ${fondo.motivo}`
+                                )
                               }
                               className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-800 text-xs font-bold hover:bg-emerald-50 shadow-sm"
                             >
