@@ -368,6 +368,7 @@ export default function PanelAdmin({
       <div className="hidden print:block border-b-2 border-slate-900 pb-4 mb-4">
         <div className="flex justify-between items-start">
           <div>
+            <img src="/logo-enacom.png" alt="ENACOM" className="h-12 w-auto object-contain mb-2" />
             <span className="text-xs font-black text-slate-500 uppercase tracking-widest block">
               ENACOM - Control Financiero
             </span>

@@ -212,8 +212,8 @@ export default async function RendicionesPage() {
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3 shadow-sm">
         <div className="max-w-md mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-sky-600 flex items-center justify-center text-white font-black text-base shadow-sm">
-              E
+            <div className="h-10 px-2 py-1 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
+              <img src="/logo-enacom.png" alt="ENACOM" className="h-7 w-auto object-contain" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">

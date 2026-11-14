@@ -10,14 +10,16 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col justify-center px-4 py-8 sm:px-6 lg:px-8 bg-slate-100">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="h-14 w-14 rounded-2xl bg-sky-600 flex items-center justify-center text-white font-black text-2xl shadow-md">
-            E
-          </div>
+          <img
+            src="/logo-enacom.png"
+            alt="Logo ENACOM"
+            className="h-24 w-auto object-contain drop-shadow-sm"
+          />
         </div>
-        <h2 className="mt-4 text-center text-2xl font-black tracking-tight text-slate-900">
-          ENACOM Rendiciones
-        </h2>
-        <p className="mt-1 text-center text-sm text-slate-600">
+        <h1 className="mt-3 text-center text-2xl sm:text-2xl font-black tracking-tight text-slate-900 uppercase">
+          PORTAL DE RENDICIONES ENACOM
+        </h1>
+        <p className="mt-1 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">
           Control de Gastos y Rendición en Terreno
         </p>
       </div>

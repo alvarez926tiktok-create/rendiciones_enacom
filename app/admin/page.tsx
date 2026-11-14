@@ -122,8 +122,8 @@ export default async function AdminDashboardPage() {
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3.5 shadow-sm print:hidden">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-amber-500 flex items-center justify-center text-white font-black text-lg shadow-sm">
-              E
+            <div className="h-11 px-2 py-1 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
+              <img src="/logo-enacom.png" alt="ENACOM" className="h-8 w-auto object-contain" />
             </div>
             <div>
               <div className="flex items-center gap-2">
