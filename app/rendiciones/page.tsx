@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { signOut } from '@/app/auth/actions';
 import FormularioGasto from '@/components/FormularioGasto';
 import HistorialGastos, { type GastoItem } from '@/components/HistorialGastos';
+import PanelSaldosEmpleado, { type FondoAsignadoActivo } from '@/components/PanelSaldosEmpleado';
 
 export default async function RendicionesPage() {
   const supabase = await createClient();
@@ -48,14 +49,57 @@ export default async function RendicionesPage() {
     console.error('Error al cargar rendiciones:', gastosError);
   }
 
-  // 3. Generar URLs firmadas seguras para ver los comprobantes privados
+  // 3. Obtener fondo activo del usuario (si tiene uno en estado 'activo' o 'por_devolver')
+  const { data: fondoActivoRaw } = await supabase
+    .from('fondos_asignados')
+    .select('*')
+    .eq('user_id', user.id)
+    .in('estado', ['activo', 'por_devolver'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let totalRendidoEnFondo = 0;
+  if (fondoActivoRaw && gastos) {
+    totalRendidoEnFondo = gastos
+      .filter((g) => g.tipo_rendicion === 'anticipo' && g.fondo_id === fondoActivoRaw.id)
+      .reduce((sum, g) => sum + g.monto, 0);
+  }
+
+  const saldoRestante = fondoActivoRaw
+    ? fondoActivoRaw.monto_asignado - totalRendidoEnFondo - (fondoActivoRaw.monto_devuelto || 0)
+    : 0;
+
+  const fondoActivoData: FondoAsignadoActivo | null = fondoActivoRaw
+    ? {
+        id: fondoActivoRaw.id,
+        motivo: fondoActivoRaw.motivo,
+        monto_asignado: fondoActivoRaw.monto_asignado,
+        total_rendido: totalRendidoEnFondo,
+        saldo_restante: saldoRestante,
+        monto_devuelto: fondoActivoRaw.monto_devuelto || 0,
+        estado: fondoActivoRaw.estado,
+      }
+    : null;
+
+  // 4. Calcular total de reembolsos acumulados pendientes de pago a favor del empleado
+  const totalReembolsosPendientes = (gastos || [])
+    .filter((g) => g.tipo_rendicion === 'reembolso' && g.estado === 'por_pagar')
+    .reduce((sum, g) => sum + g.monto, 0);
+
+  // 5. Generar URLs firmadas seguras para boletas y comprobantes de pago de la empresa
   let gastosConUrls: GastoItem[] = [];
   if (gastos && gastos.length > 0) {
     try {
-      const paths = gastos.map((g) => g.foto_url);
+      const pathsToSign: string[] = [];
+      gastos.forEach((g) => {
+        if (g.foto_url) pathsToSign.push(g.foto_url);
+        if (g.comprobante_pago_url) pathsToSign.push(g.comprobante_pago_url);
+      });
+
       const { data: signedData, error: signedError } = await supabase.storage
         .from('comprobantes')
-        .createSignedUrls(paths, 3600);
+        .createSignedUrls(pathsToSign, 3600);
 
       if (signedError) {
         console.error('Error al firmar URLs:', signedError);
@@ -74,8 +118,13 @@ export default async function RendicionesPage() {
         numero_comprobante: g.numero_comprobante,
         monto: g.monto,
         foto_url: g.foto_url,
+        tipo_rendicion: (g.tipo_rendicion as any) || 'reembolso',
+        fondo_id: g.fondo_id || null,
+        estado: (g.estado as any) || 'por_pagar',
+        comprobante_pago_url: g.comprobante_pago_url || null,
         created_at: g.created_at,
         signedUrl: signedMap.get(g.foto_url) || null,
+        signedPagoUrl: g.comprobante_pago_url ? signedMap.get(g.comprobante_pago_url) || null : null,
       }));
     } catch (err) {
       console.error('Error al procesar URLs firmadas:', err);
@@ -85,8 +134,13 @@ export default async function RendicionesPage() {
         numero_comprobante: g.numero_comprobante,
         monto: g.monto,
         foto_url: g.foto_url,
+        tipo_rendicion: (g.tipo_rendicion as any) || 'reembolso',
+        fondo_id: g.fondo_id || null,
+        estado: (g.estado as any) || 'por_pagar',
+        comprobante_pago_url: g.comprobante_pago_url || null,
         created_at: g.created_at,
         signedUrl: null,
+        signedPagoUrl: null,
       }));
     }
   }
@@ -124,11 +178,28 @@ export default async function RendicionesPage() {
       </header>
 
       {/* Contenido principal Mobile-First */}
-      <main className="max-w-md mx-auto px-4 pt-4 space-y-5">
-        {/* Formulario rápido en 1 pantalla */}
-        <FormularioGasto />
+      <main className="max-w-md mx-auto px-4 pt-4 space-y-4">
+        {/* Panel Superior de Saldos */}
+        <PanelSaldosEmpleado
+          fondoActivo={fondoActivoData}
+          totalReembolsosPendientes={totalReembolsosPendientes}
+        />
 
-        {/* Historial propio de gastos enviados */}
+        {/* Formulario rápido con selector de anticipo vs reembolso */}
+        <FormularioGasto
+          fondoActivo={
+            fondoActivoData
+              ? {
+                  id: fondoActivoData.id,
+                  motivo: fondoActivoData.motivo,
+                  monto_asignado: fondoActivoData.monto_asignado,
+                  saldo_restante: fondoActivoData.saldo_restante,
+                }
+              : null
+          }
+        />
+
+        {/* Historial propio con badges de anticipo/reembolso y estado */}
         <HistorialGastos gastos={gastosConUrls} />
       </main>
     </div>

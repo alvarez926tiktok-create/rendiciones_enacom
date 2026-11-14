@@ -33,6 +33,8 @@ export async function registrarGasto(prevState: FormState | null, formData: Form
     const numeroComprobante = (formData.get('numero_comprobante') as string)?.trim();
     const montoRaw = formData.get('monto') as string;
     const foto = formData.get('foto') as File | null;
+    const tipoRendicion = ((formData.get('tipo_rendicion') as string)?.trim() || 'reembolso') as 'anticipo' | 'reembolso';
+    const fondoId = (formData.get('fondo_id') as string)?.trim() || null;
 
     // 1. Validaciones
     if (!categoria || !CATEGORIAS_VALIDAS.includes(categoria as any)) {
@@ -50,6 +52,30 @@ export async function registrarGasto(prevState: FormState | null, formData: Form
 
     if (!foto || foto.size === 0) {
       return { error: 'Debes adjuntar o tomar una foto del comprobante.' };
+    }
+
+    let estadoGasto: 'aplicado_a_fondo' | 'por_pagar' = 'por_pagar';
+    let finalFondoId: string | null = null;
+
+    if (tipoRendicion === 'anticipo') {
+      if (!fondoId) {
+        return { error: 'Debes seleccionar el fondo asignado del cual descontar este gasto.' };
+      }
+      const { data: fondoCheck } = await supabase
+        .from('fondos_asignados')
+        .select('id, estado')
+        .eq('id', fondoId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (!fondoCheck || fondoCheck.estado === 'cerrado') {
+        return { error: 'El fondo asignado seleccionado ya no está activo.' };
+      }
+      estadoGasto = 'aplicado_a_fondo';
+      finalFondoId = fondoId;
+    } else {
+      estadoGasto = 'por_pagar';
+      finalFondoId = null;
     }
 
     // 2. Asegurar que el perfil exista en public.profiles (previene error de Foreign Key)
@@ -97,6 +123,9 @@ export async function registrarGasto(prevState: FormState | null, formData: Form
       numero_comprobante: numeroComprobante,
       monto,
       foto_url: filePath,
+      tipo_rendicion: tipoRendicion,
+      fondo_id: finalFondoId,
+      estado: estadoGasto,
     });
 
     if (insertError) {
@@ -214,14 +243,33 @@ export async function modificarGasto(
     }
 
     // 4. Actualizar registro en tabla 'gastos'
+    const rawTipo = formData.get('tipo_rendicion') as string | null;
+    const updateData: Record<string, unknown> = {
+      categoria,
+      numero_comprobante: numeroComprobante,
+      monto,
+      foto_url: filePath,
+    };
+
+    if (rawTipo === 'anticipo' || rawTipo === 'reembolso') {
+      updateData.tipo_rendicion = rawTipo;
+      if (rawTipo === 'anticipo') {
+        const fId = (formData.get('fondo_id') as string)?.trim() || gastoActual.fondo_id;
+        updateData.fondo_id = fId;
+        if (gastoActual.estado !== 'cerrado') {
+          updateData.estado = 'aplicado_a_fondo';
+        }
+      } else {
+        updateData.fondo_id = null;
+        if (gastoActual.estado !== 'cerrado') {
+          updateData.estado = 'por_pagar';
+        }
+      }
+    }
+
     const { error: updateError } = await supabase
       .from('gastos')
-      .update({
-        categoria,
-        numero_comprobante: numeroComprobante,
-        monto,
-        foto_url: filePath,
-      })
+      .update(updateData)
       .eq('id', gastoId);
 
     if (updateError) {
@@ -302,5 +350,104 @@ export async function eliminarGasto(gastoId: string): Promise<FormState> {
   } catch (err: any) {
     console.error('Error al eliminar gasto:', err);
     return { error: `Error del servidor al eliminar: ${err.message || 'Error desconocido'}` };
+  }
+}
+
+export async function devolverSobrante(
+  prevState: FormState | null,
+  formData: FormData
+): Promise<FormState> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { error: 'No tienes una sesión activa. Inicia sesión nuevamente.' };
+    }
+
+    const fondoId = (formData.get('fondoId') as string)?.trim();
+    const montoDevueltoRaw = formData.get('montoDevuelto') as string;
+    const foto = formData.get('foto') as File | null;
+
+    if (!fondoId) {
+      return { error: 'Identificador de fondo no válido.' };
+    }
+
+    const montoDevuelto = parseInt(montoDevueltoRaw, 10);
+    if (isNaN(montoDevuelto) || montoDevuelto < 0) {
+      return { error: 'El monto devuelto debe ser un número igual o mayor a 0.' };
+    }
+
+    // 1. Obtener fondo activo del usuario
+    const { data: fondo, error: fetchError } = await supabase
+      .from('fondos_asignados')
+      .select('*')
+      .eq('id', fondoId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (fetchError || !fondo) {
+      return { error: 'El fondo no existe o no te pertenece.' };
+    }
+
+    if (fondo.estado === 'cerrado') {
+      return { error: 'Este fondo ya fue cerrado previamente.' };
+    }
+
+    // 2. Si devolvió dinero (> 0), subir comprobante de transferencia bancaria
+    let filePath: string | null = null;
+    if (montoDevuelto > 0) {
+      if (!foto || foto.size === 0) {
+        return { error: 'Debes adjuntar el comprobante o captura de la transferencia de devolución a la empresa.' };
+      }
+
+      const timestamp = Date.now();
+      filePath = `${user.id}/devolucion_${fondoId}_${timestamp}.jpg`;
+
+      const arrayBuffer = await foto.arrayBuffer();
+      const fileBuffer = Buffer.from(arrayBuffer);
+
+      const { error: uploadError } = await supabase.storage
+        .from('comprobantes')
+        .upload(filePath, fileBuffer, {
+          contentType: foto.type || 'image/jpeg',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error('Error al subir comprobante de devolución:', uploadError);
+        return { error: `Error al subir comprobante: ${uploadError.message}` };
+      }
+    }
+
+    // 3. Cerrar fondo en la base de datos
+    const { error: updateError } = await supabase
+      .from('fondos_asignados')
+      .update({
+        estado: 'cerrado',
+        monto_devuelto: montoDevuelto,
+        comprobante_devolucion_url: filePath,
+      })
+      .eq('id', fondoId)
+      .eq('user_id', user.id);
+
+    if (updateError) {
+      if (filePath) {
+        await supabase.storage.from('comprobantes').remove([filePath]);
+      }
+      return { error: `Error al cerrar el fondo: ${updateError.message}` };
+    }
+
+    revalidatePath('/rendiciones');
+    revalidatePath('/admin');
+    return {
+      success: true,
+      message: 'Fondo devuelto y conciliado exitosamente. La cuenta ha sido cerrada.',
+    };
+  } catch (err: any) {
+    console.error('Error inesperado en devolverSobrante:', err);
+    return { error: `Error del servidor: ${err.message || 'Error desconocido'}` };
   }
 }

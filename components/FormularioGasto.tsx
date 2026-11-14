@@ -75,17 +75,40 @@ function compressImage(file: File): Promise<File> {
   });
 }
 
-export default function FormularioGasto() {
+export interface FondoActivoInfo {
+  id: string;
+  motivo: string;
+  monto_asignado: number;
+  saldo_restante: number;
+}
+
+interface FormularioGastoProps {
+  fondoActivo?: FondoActivoInfo | null;
+}
+
+export default function FormularioGasto({ fondoActivo }: FormularioGastoProps) {
   const [state, formAction, isPending] = useActionState<FormState | null, FormData>(
     registrarGasto,
     null
   );
+
+  const [tipoRendicion, setTipoRendicion] = useState<'anticipo' | 'reembolso'>(() => {
+    return fondoActivo ? 'anticipo' : 'reembolso';
+  });
 
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isCompressing, setIsCompressing] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (fondoActivo) {
+      setTipoRendicion('anticipo');
+    } else {
+      setTipoRendicion('reembolso');
+    }
+  }, [fondoActivo]);
 
   // Manejo de foto con optimización automática
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,6 +146,12 @@ export default function FormularioGasto() {
   }, [state?.success]);
 
   const handleSubmit = (formData: FormData) => {
+    formData.set('tipo_rendicion', tipoRendicion);
+    if (tipoRendicion === 'anticipo' && fondoActivo) {
+      formData.set('fondo_id', fondoActivo.id);
+    } else {
+      formData.delete('fondo_id');
+    }
     if (selectedFile) {
       formData.set('foto', selectedFile, selectedFile.name);
     }
@@ -153,6 +182,63 @@ export default function FormularioGasto() {
       )}
 
       <form ref={formRef} action={handleSubmit} className="space-y-4">
+        {/* Selector de Modalidad: Descontar de Fondo vs Gasto Propio */}
+        <div className="space-y-1.5 pb-2 border-b border-slate-100">
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+            Modalidad de Rendición *
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={!fondoActivo}
+              onClick={() => setTipoRendicion('anticipo')}
+              className={`p-3 rounded-xl border text-left transition-all ${
+                tipoRendicion === 'anticipo' && fondoActivo
+                  ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20'
+                  : !fondoActivo
+                  ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                  : 'bg-white border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-slate-900 block">
+                  Descontar de Fondo Asignado
+                </span>
+                {tipoRendicion === 'anticipo' && fondoActivo && (
+                  <span className="h-2 w-2 rounded-full bg-sky-600"></span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                {fondoActivo
+                  ? `${fondoActivo.motivo} (Disp: $${new Intl.NumberFormat('es-CL').format(fondoActivo.saldo_restante)})`
+                  : 'Sin fondo activo asignado'}
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTipoRendicion('reembolso')}
+              className={`p-3 rounded-xl border text-left transition-all ${
+                tipoRendicion === 'reembolso'
+                  ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-500/20'
+                  : 'bg-white border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-slate-900 block">
+                  Gasto Propio (Reembolso)
+                </span>
+                {tipoRendicion === 'reembolso' && (
+                  <span className="h-2 w-2 rounded-full bg-amber-600"></span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Dinero pagado de tu bolsillo para devolución de la empresa.
+              </p>
+            </button>
+          </div>
+        </div>
+
         {/* Categoría */}
         <div>
           <label

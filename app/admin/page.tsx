@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { signOut } from '@/app/auth/actions';
 import AdminViewContainer from '@/components/AdminViewContainer';
-import { type GastoAdminItem, type ProfileItem } from '@/components/PanelAdmin';
+import { type GastoAdminItem, type ProfileItem, type FondoAdminItem } from '@/components/PanelAdmin';
 
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
@@ -44,7 +44,17 @@ export default async function AdminDashboardPage() {
     console.error('Error al cargar rendiciones admin:', gastosError);
   }
 
-  // 4. Mapear datos consolidados con la información de cada colaborador
+  // 4. Obtener todos los fondos asignados
+  const { data: fondosData, error: fondosError } = await supabase
+    .from('fondos_asignados')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (fondosError) {
+    console.error('Error al cargar fondos asignados admin:', fondosError);
+  }
+
+  // 5. Mapear datos consolidados con la información de cada colaborador
   const gastosConsolidados: GastoAdminItem[] = (gastosData || []).map((g) => {
     const userProfile = profileMap.get(g.user_id);
     return {
@@ -54,7 +64,29 @@ export default async function AdminDashboardPage() {
       numero_comprobante: g.numero_comprobante,
       monto: g.monto,
       foto_url: g.foto_url,
+      tipo_rendicion: (g.tipo_rendicion as any) || 'reembolso',
+      fondo_id: g.fondo_id || null,
+      estado: (g.estado as any) || 'por_pagar',
+      comprobante_pago_url: g.comprobante_pago_url || null,
       created_at: g.created_at,
+      nombre_empleado: userProfile?.nombre || 'Colaborador',
+      email_empleado: userProfile?.email || '',
+      area_empleado: userProfile?.area || 'Sin Área',
+    };
+  });
+
+  const fondosConsolidados: FondoAdminItem[] = (fondosData || []).map((f) => {
+    const userProfile = profileMap.get(f.user_id);
+    return {
+      id: f.id,
+      user_id: f.user_id,
+      admin_id: f.admin_id,
+      motivo: f.motivo,
+      monto_asignado: f.monto_asignado,
+      estado: f.estado,
+      comprobante_devolucion_url: f.comprobante_devolucion_url,
+      monto_devuelto: f.monto_devuelto,
+      created_at: f.created_at,
       nombre_empleado: userProfile?.nombre || 'Colaborador',
       email_empleado: userProfile?.email || '',
       area_empleado: userProfile?.area || 'Sin Área',
@@ -98,7 +130,11 @@ export default async function AdminDashboardPage() {
 
       {/* Contenido principal del Dashboard */}
       <main className="max-w-6xl mx-auto px-4 pt-6">
-        <AdminViewContainer gastos={gastosConsolidados} profiles={profiles} />
+        <AdminViewContainer
+          gastos={gastosConsolidados}
+          profiles={profiles}
+          fondos={fondosConsolidados}
+        />
       </main>
     </div>
   );

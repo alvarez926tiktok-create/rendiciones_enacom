@@ -21,7 +21,23 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 2. TABLA: gastos
+-- 2. TABLA: fondos_asignados
+CREATE TABLE IF NOT EXISTS public.fondos_asignados (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  admin_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  motivo TEXT NOT NULL,
+  monto_asignado INTEGER NOT NULL CHECK (monto_asignado > 0),
+  estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo', 'por_devolver', 'cerrado')),
+  comprobante_devolucion_url TEXT,
+  monto_devuelto INTEGER NOT NULL DEFAULT 0 CHECK (monto_devuelto >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fondos_user_id ON public.fondos_asignados(user_id);
+CREATE INDEX IF NOT EXISTS idx_fondos_estado ON public.fondos_asignados(estado);
+
+-- 3. TABLA: gastos
 CREATE TABLE IF NOT EXISTS public.gastos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -36,6 +52,10 @@ CREATE TABLE IF NOT EXISTS public.gastos (
   numero_comprobante TEXT NOT NULL,
   monto INTEGER NOT NULL CHECK (monto > 0),
   foto_url TEXT NOT NULL,
+  tipo_rendicion TEXT NOT NULL DEFAULT 'reembolso' CHECK (tipo_rendicion IN ('anticipo', 'reembolso')),
+  fondo_id UUID REFERENCES public.fondos_asignados(id) ON DELETE SET NULL,
+  estado TEXT NOT NULL DEFAULT 'por_pagar' CHECK (estado IN ('aplicado_a_fondo', 'por_pagar', 'cerrado')),
+  comprobante_pago_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT unique_user_comprobante UNIQUE (user_id, numero_comprobante)
 );
@@ -43,6 +63,9 @@ CREATE TABLE IF NOT EXISTS public.gastos (
 -- Índices recomendados para optimización de consultas
 CREATE INDEX IF NOT EXISTS idx_gastos_user_id ON public.gastos(user_id);
 CREATE INDEX IF NOT EXISTS idx_gastos_created_at ON public.gastos(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gastos_fondo_id ON public.gastos(fondo_id);
+CREATE INDEX IF NOT EXISTS idx_gastos_estado ON public.gastos(estado);
+CREATE INDEX IF NOT EXISTS idx_gastos_tipo ON public.gastos(tipo_rendicion);
 
 -- ==============================================================================
 -- 3. FUNCIONES AUXILIARES DE SEGURIDAD (SECURITY DEFINER)
@@ -167,6 +190,44 @@ CREATE POLICY "gastos_delete_policy"
   TO authenticated
   USING (
     auth.uid() = user_id OR public.is_admin()
+  );
+
+-- 4.4. Políticas para 'fondos_asignados'
+ALTER TABLE public.fondos_asignados ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "fondos_select_policy" ON public.fondos_asignados;
+CREATE POLICY "fondos_select_policy"
+  ON public.fondos_asignados FOR SELECT
+  TO authenticated
+  USING (
+    auth.uid() = user_id OR public.is_admin()
+  );
+
+DROP POLICY IF EXISTS "fondos_insert_policy" ON public.fondos_asignados;
+CREATE POLICY "fondos_insert_policy"
+  ON public.fondos_asignados FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    public.is_admin()
+  );
+
+DROP POLICY IF EXISTS "fondos_update_policy" ON public.fondos_asignados;
+CREATE POLICY "fondos_update_policy"
+  ON public.fondos_asignados FOR UPDATE
+  TO authenticated
+  USING (
+    auth.uid() = user_id OR public.is_admin()
+  )
+  WITH CHECK (
+    auth.uid() = user_id OR public.is_admin()
+  );
+
+DROP POLICY IF EXISTS "fondos_delete_policy" ON public.fondos_asignados;
+CREATE POLICY "fondos_delete_policy"
+  ON public.fondos_asignados FOR DELETE
+  TO authenticated
+  USING (
+    public.is_admin()
   );
 
 -- ==============================================================================

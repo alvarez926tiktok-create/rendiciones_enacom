@@ -9,8 +9,13 @@ export type GastoItem = {
   numero_comprobante: string;
   monto: number;
   foto_url: string;
+  tipo_rendicion: 'anticipo' | 'reembolso';
+  fondo_id: string | null;
+  estado: 'aplicado_a_fondo' | 'por_pagar' | 'cerrado';
+  comprobante_pago_url: string | null;
   created_at: string;
   signedUrl?: string | null;
+  signedPagoUrl?: string | null;
 };
 
 interface HistorialGastosProps {
@@ -285,7 +290,7 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
               className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors space-y-2.5"
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <span
                     className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${getCategoriaBadgeClass(
                       gasto.categoria
@@ -303,10 +308,39 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
                 </p>
               </div>
 
+              {/* Badges de Modalidad y Estado Contable */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {gasto.tipo_rendicion === 'anticipo' ? (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    Anticipo / Fondo
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
+                    Reembolso Propio
+                  </span>
+                )}
+
+                {gasto.estado === 'aplicado_a_fondo' && (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    ✓ Aplicado a Fondo
+                  </span>
+                )}
+                {gasto.estado === 'por_pagar' && (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-50 text-yellow-800 border border-yellow-200">
+                    ⏳ Pendiente de Pago
+                  </span>
+                )}
+                {gasto.estado === 'cerrado' && (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
+                    ✓ Cerrado / Reembolsado
+                  </span>
+                )}
+              </div>
+
               <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs">
                 <span className="text-slate-400 text-[11px]">{formatDate(gasto.created_at)}</span>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {/* Ver Boleta */}
                   {gasto.signedUrl && (
                     <button
@@ -318,29 +352,44 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
                     </button>
                   )}
 
-                  {/* Editar */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActionFeedback(null);
-                      setGastoToEdit(gasto);
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:text-amber-600 text-xs font-bold shadow-sm"
-                  >
-                    Editar
-                  </button>
+                  {/* Ver Comprobante de Pago de la Empresa (si fue reembolsado) */}
+                  {gasto.signedPagoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setModalFoto(gasto.signedPagoUrl!)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-800 hover:bg-emerald-100 text-xs font-bold shadow-sm"
+                    >
+                      Ver Pago
+                    </button>
+                  )}
 
-                  {/* Eliminar */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActionFeedback(null);
-                      setGastoToDelete(gasto);
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold shadow-sm"
-                  >
-                    Eliminar
-                  </button>
+                  {/* Editar (solo si no está cerrado) */}
+                  {gasto.estado !== 'cerrado' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionFeedback(null);
+                        setGastoToEdit(gasto);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:text-amber-600 text-xs font-bold shadow-sm"
+                    >
+                      Editar
+                    </button>
+                  )}
+
+                  {/* Eliminar (solo si no está cerrado) */}
+                  {gasto.estado !== 'cerrado' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionFeedback(null);
+                        setGastoToDelete(gasto);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold shadow-sm"
+                    >
+                      Eliminar
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
