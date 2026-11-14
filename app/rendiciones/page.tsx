@@ -14,12 +14,28 @@ export default async function RendicionesPage() {
     redirect('/login');
   }
 
-  // 1. Obtener perfil
-  const { data: profile } = await supabase
+  // 1. Obtener o auto-crear perfil si no existe
+  let { data: profile } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
+
+  if (!profile) {
+    const { data: createdProfile } = await supabase
+      .from('profiles')
+      .insert({
+        id: user.id,
+        nombre: user.user_metadata?.nombre || user.email?.split('@')[0] || 'Colaborador',
+        email: user.email || '',
+        rol: (user.user_metadata?.rol as any) || 'empleado',
+        area: (user.user_metadata?.area as any) || 'Administrativo',
+      })
+      .select('*')
+      .maybeSingle();
+
+    profile = createdProfile;
+  }
 
   // 2. Obtener gastos del usuario en orden descendente
   const { data: gastos, error: gastosError } = await supabase
@@ -35,27 +51,44 @@ export default async function RendicionesPage() {
   // 3. Generar URLs firmadas seguras para ver los comprobantes privados
   let gastosConUrls: GastoItem[] = [];
   if (gastos && gastos.length > 0) {
-    const paths = gastos.map((g) => g.foto_url);
-    const { data: signedData } = await supabase.storage
-      .from('comprobantes')
-      .createSignedUrls(paths, 3600);
+    try {
+      const paths = gastos.map((g) => g.foto_url);
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from('comprobantes')
+        .createSignedUrls(paths, 3600);
 
-    const signedMap = new Map<string, string>();
-    signedData?.forEach((item) => {
-      if (item.path && item.signedUrl) {
-        signedMap.set(item.path, item.signedUrl);
+      if (signedError) {
+        console.error('Error al firmar URLs:', signedError);
       }
-    });
 
-    gastosConUrls = gastos.map((g) => ({
-      id: g.id,
-      categoria: g.categoria,
-      numero_comprobante: g.numero_comprobante,
-      monto: g.monto,
-      foto_url: g.foto_url,
-      created_at: g.created_at,
-      signedUrl: signedMap.get(g.foto_url) || null,
-    }));
+      const signedMap = new Map<string, string>();
+      signedData?.forEach((item) => {
+        if (item.path && item.signedUrl) {
+          signedMap.set(item.path, item.signedUrl);
+        }
+      });
+
+      gastosConUrls = gastos.map((g) => ({
+        id: g.id,
+        categoria: g.categoria,
+        numero_comprobante: g.numero_comprobante,
+        monto: g.monto,
+        foto_url: g.foto_url,
+        created_at: g.created_at,
+        signedUrl: signedMap.get(g.foto_url) || null,
+      }));
+    } catch (err) {
+      console.error('Error al procesar URLs firmadas:', err);
+      gastosConUrls = gastos.map((g) => ({
+        id: g.id,
+        categoria: g.categoria,
+        numero_comprobante: g.numero_comprobante,
+        monto: g.monto,
+        foto_url: g.foto_url,
+        created_at: g.created_at,
+        signedUrl: null,
+      }));
+    }
   }
 
   return (

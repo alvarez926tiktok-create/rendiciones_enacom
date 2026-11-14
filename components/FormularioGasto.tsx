@@ -12,6 +12,69 @@ const CATEGORIAS = [
   'Otro',
 ] as const;
 
+// Compresión nativa en navegador para fotos de celular de alto peso
+function compressImage(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    // Si ya pesa menos de 600KB, enviarlo sin alterar
+    if (file.size < 600 * 1024) {
+      resolve(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_DIMENSION = 1600;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_DIMENSION) {
+            height = Math.round((height * MAX_DIMENSION) / width);
+            width = MAX_DIMENSION;
+          }
+        } else {
+          if (height > MAX_DIMENSION) {
+            width = Math.round((width * MAX_DIMENSION) / height);
+            height = MAX_DIMENSION;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(file);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              resolve(file);
+              return;
+            }
+            const cleanName = file.name.replace(/\.[^/.]+$/, '') + '.jpg';
+            const compressed = new File([blob], cleanName, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            });
+            resolve(compressed);
+          },
+          'image/jpeg',
+          0.8
+        );
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function FormularioGasto() {
   const [state, formAction, isPending] = useActionState<FormState | null, FormData>(
     registrarGasto,
@@ -19,16 +82,30 @@ export default function FormularioGasto() {
   );
 
   const [preview, setPreview] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isCompressing, setIsCompressing] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Manejo de preview de foto
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Manejo de foto con optimización automática
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setPreview(url);
+      setIsCompressing(true);
+      try {
+        const optimized = await compressImage(file);
+        setSelectedFile(optimized);
+        const url = URL.createObjectURL(optimized);
+        setPreview(url);
+      } catch (err) {
+        console.error('Error al optimizar imagen:', err);
+        setSelectedFile(file);
+        setPreview(URL.createObjectURL(file));
+      } finally {
+        setIsCompressing(false);
+      }
     } else {
+      setSelectedFile(null);
       setPreview(null);
     }
   };
@@ -38,11 +115,19 @@ export default function FormularioGasto() {
     if (state?.success) {
       formRef.current?.reset();
       setPreview(null);
+      setSelectedFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
   }, [state?.success]);
+
+  const handleSubmit = (formData: FormData) => {
+    if (selectedFile) {
+      formData.set('foto', selectedFile, selectedFile.name);
+    }
+    formAction(formData);
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
@@ -67,7 +152,7 @@ export default function FormularioGasto() {
         </div>
       )}
 
-      <form ref={formRef} action={formAction} className="space-y-4">
+      <form ref={formRef} action={handleSubmit} className="space-y-4">
         {/* Categoría */}
         <div>
           <label
@@ -163,8 +248,9 @@ export default function FormularioGasto() {
 
           <button
             type="button"
+            disabled={isCompressing}
             onClick={() => fileInputRef.current?.click()}
-            className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl border-2 border-dashed border-sky-400 bg-sky-50/60 hover:bg-sky-100/70 active:bg-sky-100 text-sky-800 font-bold text-sm transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl border-2 border-dashed border-sky-400 bg-sky-50/60 hover:bg-sky-100/70 active:bg-sky-100 text-sky-800 font-bold text-sm transition-colors disabled:opacity-50"
           >
             <svg
               className="w-5 h-5 text-sky-600"
@@ -185,7 +271,11 @@ export default function FormularioGasto() {
                 d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
               />
             </svg>
-            {preview ? 'Cambiar Foto de Boleta' : 'Tomar Foto con Cámara / Subir Boleta'}
+            {isCompressing
+              ? 'Optimizando imagen...'
+              : preview
+              ? 'Cambiar Foto de Boleta'
+              : 'Tomar Foto con Cámara / Subir Boleta'}
           </button>
 
           {preview && (
@@ -205,7 +295,7 @@ export default function FormularioGasto() {
         {/* Botón de Envío */}
         <button
           type="submit"
-          disabled={isPending}
+          disabled={isPending || isCompressing}
           className="w-full mt-2 flex justify-center items-center py-4 px-4 rounded-xl text-base font-black text-white bg-sky-600 hover:bg-sky-700 active:bg-sky-800 disabled:opacity-50 transition-colors shadow-md"
         >
           {isPending ? 'Guardando comprobante...' : 'Enviar Rendición'}
