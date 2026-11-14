@@ -215,38 +215,45 @@ export default async function RendicionesPage() {
         email={profile?.email}
       />
 
-      {/* Contenido principal Mobile-First */}
-      <main className="max-w-md mx-auto px-4 pt-4 space-y-4">
-        {/* Panel Superior de Saldos */}
-        <PanelSaldosEmpleado
-          fondoActivo={fondoActivoData}
-          totalReembolsosPendientes={totalReembolsosPendientes}
-          gastosVinculados={gastosVinculadosFondo}
-          nombreUsuario={profile?.nombre}
-          areaUsuario={profile?.area}
-        />
+      {/* Contenido principal Adaptativo Mobile-First & Desktop */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Columna Izquierda (lg:col-span-5): Saldos arriba + Formulario de Nueva Rendición Sticky */}
+          <div className="lg:col-span-5 space-y-5 lg:sticky lg:top-20">
+            {/* Panel Superior de Saldos */}
+            <PanelSaldosEmpleado
+              fondoActivo={fondoActivoData}
+              totalReembolsosPendientes={totalReembolsosPendientes}
+              gastosVinculados={gastosVinculadosFondo}
+              nombreUsuario={profile?.nombre}
+              areaUsuario={profile?.area}
+            />
 
-        {/* Formulario rápido con selector de anticipo vs reembolso */}
-        <FormularioGasto
-          fondoActivo={
-            fondoActivoData
-              ? {
-                  id: fondoActivoData.id,
-                  motivo: fondoActivoData.motivo,
-                  monto_asignado: fondoActivoData.monto_asignado,
-                  saldo_restante: fondoActivoData.saldo_restante,
-                }
-              : null
-          }
-        />
+            {/* Formulario rápido con selector de anticipo vs reembolso */}
+            <FormularioGasto
+              fondoActivo={
+                fondoActivoData
+                  ? {
+                      id: fondoActivoData.id,
+                      motivo: fondoActivoData.motivo,
+                      monto_asignado: fondoActivoData.monto_asignado,
+                      saldo_restante: fondoActivoData.saldo_restante,
+                    }
+                  : null
+              }
+            />
+          </div>
 
-        {/* Historial propio con folios cortos y acceso a Cartola */}
-        <HistorialGastos
-          gastos={gastosConUrls}
-          abonos={abonosConUrls}
-          nombreUsuario={profile?.nombre}
-          areaUsuario={profile?.area}
-        />
+          {/* Columna Derecha (lg:col-span-7): Historial de Rendiciones con Filtros y Cartola */}
+          <div className="lg:col-span-7">
+            <HistorialGastos
+              gastos={gastosConUrls}
+              abonos={abonosConUrls}
+              nombreUsuario={profile?.nombre}
+              areaUsuario={profile?.area}
+            />
+          </div>
+        </div>
       </main>
     </div>
   );

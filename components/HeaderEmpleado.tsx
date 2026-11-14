@@ -31,32 +31,36 @@ export default function HeaderEmpleado({ nombre, area, email }: HeaderEmpleadoPr
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3 shadow-sm">
-        <div className="max-w-md mx-auto flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm print:hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between">
           {/* Logo y Datos del Colaborador */}
-          <div className="flex items-center gap-2.5">
-            <div className="h-10 px-2 py-1 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
-              <img src="/logo-enacom.png" alt="ENACOM" className="h-7 w-auto object-contain" />
+          <div className="flex items-center gap-3">
+            <div className="h-10 sm:h-11 px-2 sm:px-2.5 py-1 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
+              <img src="/logo-enacom.png" alt="ENACOM" className="h-7 sm:h-8 w-auto object-contain" />
             </div>
             <div>
-              <div className="flex items-center gap-1.5">
-                <h1 className="text-sm font-black text-slate-900 leading-none">
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm sm:text-base font-black text-slate-900 leading-none">
                   {nombre || 'Colaborador'}
                 </h1>
+                <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-200">
+                  Colaborador
+                </span>
               </div>
-              <span className="text-[11px] font-semibold text-slate-500">
-                {area || 'Terreno'}
-              </span>
+              <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+                <span className="font-semibold text-slate-700">{area || 'Terreno'}</span>
+                {email ? <span className="hidden sm:inline"> • {email}</span> : null}
+              </p>
             </div>
           </div>
 
           {/* Acciones de Cuenta */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setModalAbierto(true)}
               title="Cambiar mi contraseña"
-              className="text-xs font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg px-2.5 py-1.5 transition-colors flex items-center gap-1"
+              className="text-xs font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-xl px-3 py-2 transition-colors flex items-center gap-1.5 shadow-sm"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -72,9 +76,9 @@ export default function HeaderEmpleado({ nombre, area, email }: HeaderEmpleadoPr
             <form action={signOut}>
               <button
                 type="submit"
-                className="text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg px-2.5 py-1.5 transition-colors"
+                className="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl px-3 py-2 transition-colors shadow-sm"
               >
-                Salir
+                Cerrar Sesión
               </button>
             </form>
           </div>

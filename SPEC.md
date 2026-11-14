@@ -32,6 +32,9 @@ Desarrollar una aplicación web **Mobile-First** ultra simple y rápida para la 
 
 ### 4.1. Rol `empleado`
 - **Experiencia de Usuario:**
+  - Diseño responsivo adaptativo: Flujo vertical táctil optimizado en smartphones (`< 1024px`) y grilla equilibrada de 2 columnas en escritorio (`lg:grid-cols-12`) con contenedor `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`.
+    - **Columna Izquierda (`lg:col-span-5`):** Panel de Saldos arriba y Formulario de Nueva Rendición sticky debajo.
+    - **Columna Derecha (`lg:col-span-7`):** Historial completo con filtros horizontales y modal de cartola.
   - Formulario de rendición rápido en **1 sola pantalla**.
   - Visualización directa de su propio historial de rendiciones enviadas (orden descendente).
 - **Campos Obligatorios del Formulario:**
