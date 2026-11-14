@@ -57,6 +57,7 @@ Desarrollar una aplicación web **Mobile-First** ultra simple y rápida para la 
       - `Ingeniería Eléctrica`
       - `Informática`
       - `Administrativo`
+      - `Contabilidad`
       - `Ventas`
       - `Logística`
       - `Gerencia`
@@ -75,7 +76,7 @@ Extensión del usuario autenticado en `auth.users`:
 - `nombre`: `TEXT NOT NULL`
 - `email`: `TEXT NOT NULL`
 - `rol`: `TEXT NOT NULL CHECK (rol IN ('admin', 'empleado'))`
-- `area`: `TEXT NOT NULL CHECK (area IN ('Ingeniería Eléctrica', 'Informática', 'Administrativo', 'Ventas', 'Logística', 'Gerencia'))`
+- `area`: `TEXT NOT NULL CHECK (area IN ('Ingeniería Eléctrica', 'Informática', 'Administrativo', 'Contabilidad', 'Ventas', 'Logística', 'Gerencia'))`
 - `created_at`: `TIMESTAMPTZ DEFAULT now()`
 
 #### Tabla `gastos`

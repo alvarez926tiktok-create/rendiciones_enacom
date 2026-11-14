@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     'Ingeniería Eléctrica',
     'Informática',
     'Administrativo',
+    'Contabilidad',
     'Ventas',
     'Logística',
     'Gerencia'
