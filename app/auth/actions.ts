@@ -4,8 +4,8 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 
 export async function login(prevState: { error?: string } | null, formData: FormData) {
-  const email = formData.get('email') as string;
-  const password = formData.get('password') as string;
+  const email = (formData.get('email') as string)?.trim().toLowerCase();
+  const password = (formData.get('password') as string)?.trim();
 
   if (!email || !password) {
     return { error: 'Por favor ingresa tu correo y contraseña.' };
@@ -19,7 +19,12 @@ export async function login(prevState: { error?: string } | null, formData: Form
   });
 
   if (authError || !authData.user) {
-    return { error: 'Credenciales inválidas. Verifica tu correo y contraseña.' };
+    console.error('Error de autenticación:', authError);
+    return { 
+      error: authError?.message === 'Invalid login credentials'
+        ? 'Credenciales inválidas. Verifica tu correo y contraseña.'
+        : authError?.message || 'Error al iniciar sesión. Intenta nuevamente.'
+    };
   }
 
   // Obtener rol del perfil
