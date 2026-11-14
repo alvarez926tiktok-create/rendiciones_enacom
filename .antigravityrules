@@ -1,0 +1,16 @@
+# Reglas de Gobernanza del Proyecto (SDD & Principio KISS)
+
+1. **Lectura y Validación Obligatoria:**
+   - Antes de iniciar o proponer cualquier tarea, modificación o línea de código, debes consultar y ceñirte estrictamente a [SPEC.md](file:///c:/Rendiciones/SPEC.md).
+
+2. **Prohibición Estricta de Sobreingeniería (Scope Creep):**
+   - Prohibido agregar funcionalidades, pantallas, wizards o flujos multipaso fuera de lo documentado en `SPEC.md`.
+   - Se debe mantener un diseño Mobile-First y el principio KISS (Keep It Simple, Stupid) en todas las decisiones.
+
+3. **Restricción Tecnológica Absoluta:**
+   - Solo está permitido el stack definido: Next.js (App Router), Tailwind CSS y las librerías oficiales `@supabase/ssr` y `@supabase/supabase-js`.
+   - Queda terminantemente prohibido instalar o utilizar ORMs (Prisma, Drizzle, TypeORM, etc.), bibliotecas de gráficos (Chart.js, Recharts, D3, etc.) o paquetes de terceros no contemplados en la especificación.
+
+4. **Metodología Incremental por Fases:**
+   - Las fases de desarrollo (Fase 1 a Fase 4) deben ejecutarse secuencialmente.
+   - Está prohibido avanzar a una nueva fase sin la revisión y confirmación explícita del usuario.
