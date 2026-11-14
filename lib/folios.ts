@@ -19,3 +19,24 @@ export function formatFolioGasto(correlativo?: number | null, fallbackId?: strin
   }
   return '#G-101';
 }
+
+export function formatFolioReembolso(correlativo?: number | null, fallbackId?: string): string {
+  if (typeof correlativo === 'number' && correlativo > 0) {
+    return `#R-${String(100 + correlativo).padStart(3, '0')}`;
+  }
+  if (fallbackId) {
+    return `#R-${fallbackId.replace(/-/g, '').slice(0, 3).toUpperCase()}`;
+  }
+  return '#R-101';
+}
+
+export function formatFolioRendicion(
+  tipoRendicion: 'anticipo' | 'reembolso' | string,
+  correlativo?: number | null,
+  fallbackId?: string
+): string {
+  if (tipoRendicion === 'reembolso') {
+    return formatFolioReembolso(correlativo, fallbackId);
+  }
+  return formatFolioGasto(correlativo, fallbackId);
+}

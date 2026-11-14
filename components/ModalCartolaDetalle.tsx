@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useActionState, useEffect, useRef } from 'react';
-import { formatFolioFondo, formatFolioGasto } from '@/lib/folios';
+import { formatFolioFondo, formatFolioGasto, formatFolioReembolso } from '@/lib/folios';
 import {
   registrarAbonoReembolso,
   cerrarFolioDefinitivo,
@@ -181,10 +181,16 @@ export default function ModalCartolaDetalle({
               <span className="px-2.5 py-1 rounded-lg text-xs font-black tracking-wider bg-sky-500/20 text-sky-300 border border-sky-400/30 font-mono">
                 {tipo === 'fondo'
                   ? formatFolioFondo(fondo?.correlativo, fondo?.id)
+                  : gasto?.tipo_rendicion === 'reembolso'
+                  ? formatFolioReembolso(gasto?.correlativo, gasto?.id)
                   : formatFolioGasto(gasto?.correlativo, gasto?.id)}
               </span>
               <span className="text-xs font-bold text-slate-300">
-                {tipo === 'fondo' ? 'Cartola de Fondo / Viático' : 'Cartola de Rendición de Gasto'}
+                {tipo === 'fondo'
+                  ? 'Cartola de Fondo / Viático'
+                  : gasto?.tipo_rendicion === 'reembolso'
+                  ? 'Cartola de Reembolso (Gasto Propio)'
+                  : 'Cartola de Rendición de Gasto'}
               </span>
               {tipo === 'gasto' && (
                 <span

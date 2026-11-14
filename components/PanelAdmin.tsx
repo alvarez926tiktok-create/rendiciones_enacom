@@ -3,7 +3,7 @@
 import { useState, useMemo, useActionState, useEffect, useRef } from 'react';
 import { obtenerUrlComprobante } from '@/app/admin/actions';
 import { asignarFondo, reembolsarGasto, type FondoActionState } from '@/app/admin/fondos-actions';
-import { formatFolioFondo, formatFolioGasto } from '@/lib/folios';
+import { formatFolioFondo, formatFolioGasto, formatFolioReembolso } from '@/lib/folios';
 import ModalCartolaDetalle, { type AbonoItem } from '@/components/ModalCartolaDetalle';
 
 export interface GastoAdminItem {
@@ -33,6 +33,7 @@ export interface FondoAdminItem {
   monto_asignado: number;
   estado: 'activo' | 'por_devolver' | 'cerrado';
   comprobante_devolucion_url: string | null;
+  signedDevolucionUrl?: string | null;
   monto_devuelto: number;
   created_at: string;
   nombre_empleado?: string;
@@ -209,6 +210,15 @@ export default function PanelAdmin({
     });
     return mapa;
   }, [abonos]);
+
+  // Mapa de fondos asignados por id para vinculación rápida
+  const fondosMap = useMemo(() => {
+    const mapa = new Map<string, FondoAdminItem>();
+    fondos.forEach((f) => {
+      mapa.set(f.id, f);
+    });
+    return mapa;
+  }, [fondos]);
 
   // Filtrado reactivo de gastos
   const filteredGastos = useMemo(() => {
@@ -849,10 +859,24 @@ export default function PanelAdmin({
                 </thead>
                 <tbody className="divide-y divide-slate-100 print:divide-slate-200">
                   {filteredGastos.map((gasto) => {
-                    const folioGasto = formatFolioGasto(gasto.correlativo, gasto.id);
+                    const fondoAsociado = gasto.fondo_id ? fondosMap.get(gasto.fondo_id) : null;
+                    const esAnticipo = gasto.tipo_rendicion === 'anticipo';
+                    const folioFondo = fondoAsociado ? formatFolioFondo(fondoAsociado.correlativo, fondoAsociado.id) : null;
+                    const folioItem = esAnticipo
+                      ? (folioFondo || formatFolioGasto(gasto.correlativo, gasto.id))
+                      : formatFolioReembolso(gasto.correlativo, gasto.id);
+
                     const abonosGasto = abonosPorGasto.get(gasto.id) || [];
                     const totalAbonado = abonosGasto.reduce((s, a) => s + a.monto_abonado, 0);
                     const tieneAbonosParciales = totalAbonado > 0 && totalAbonado < gasto.monto;
+
+                    const handleOpenCartola = () => {
+                      if (esAnticipo && fondoAsociado) {
+                        setCartolaData({ tipo: 'fondo', fondo: fondoAsociado });
+                      } else {
+                        setCartolaData({ tipo: 'gasto', gasto });
+                      }
+                    };
 
                     return (
                       <tr
@@ -862,11 +886,21 @@ export default function PanelAdmin({
                         <td className="px-3 py-3 whitespace-nowrap print:px-2 print:py-1.5">
                           <button
                             type="button"
-                            onClick={() => setCartolaData({ tipo: 'gasto', gasto })}
-                            className="font-mono font-black text-xs text-sky-600 hover:text-sky-800 underline bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-200"
+                            onClick={handleOpenCartola}
+                            title={esAnticipo && fondoAsociado ? `Ver Cartola del Fondo Maestro ${folioFondo}` : 'Ver Cartola'}
+                            className={`font-mono font-black text-xs underline px-2 py-0.5 rounded-lg border transition-colors ${
+                              esAnticipo
+                                ? 'text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100'
+                                : 'text-amber-800 bg-amber-50 border-amber-200 hover:bg-amber-100'
+                            }`}
                           >
-                            {folioGasto}
+                            {folioItem}
                           </button>
+                          {esAnticipo && (
+                            <span className="block text-[10px] font-mono text-slate-400 mt-0.5">
+                              Doc: {formatFolioGasto(gasto.correlativo, gasto.id)}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap print:px-2 print:py-1.5 print:text-slate-800">
                           {formatDate(gasto.created_at)}
@@ -935,7 +969,7 @@ export default function PanelAdmin({
                             {/* Ver Cartola / Detalle */}
                             <button
                               type="button"
-                              onClick={() => setCartolaData({ tipo: 'gasto', gasto })}
+                              onClick={handleOpenCartola}
                               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-xs shadow-sm transition-colors"
                             >
                               Ver Cartola

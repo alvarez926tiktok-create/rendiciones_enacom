@@ -211,3 +211,11 @@ Registro de pagos parciales o abonos realizados por la empresa para cubrir gasto
    - **Autogestión de Contraseña de Empleados:**
      - Botón de gestión en cabecera del empleado con modal seguro para ingreso y confirmación de nueva contraseña (mínimo 6 caracteres).
      - Actualización mediante Server Action usando `supabase.auth.updateUser({ password })`.
+
+8. **Fase 8: Folios Maestros Contextuales y Trazabilidad de Devoluciones**
+   - **Identificadores y Cartolas Contextuales:**
+     - Folios diferenciados: `#F-xxx` para Fondos/Viáticos, `#R-xxx` para Reembolsos propios y `#G-xxx` para boletas individuales.
+     - Navegación contextual: al hacer clic en el folio o en "Ver Cartola" de un gasto tipo anticipo, abre la Cartola Maestra del Fondo (`tipo="fondo"`), permitiendo ver el ciclo completo de la partida (monto asignado, boletas descontadas y devolución de sobrante).
+   - **Trazabilidad de Fondos Cerrados y Devoluciones:**
+     - Cierre atómico: al realizar la devolución del sobrante en `devolverSobrante`, se actualiza el fondo y sus boletas hijas a estado `'cerrado'`.
+     - Historial accesible de fondos cerrados en el panel del colaborador para revisar devoluciones y comprobantes de transferencias bancarias en cualquier momento.

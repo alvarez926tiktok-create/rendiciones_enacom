@@ -75,6 +75,27 @@ export default async function AdminDashboardPage() {
     created_at: a.created_at,
   }));
 
+  // Firmar URLs de devolución de fondos para visualización directa en Cartola
+  const devolucionPaths = (fondosData || [])
+    .map((f) => f.comprobante_devolucion_url)
+    .filter((url): url is string => Boolean(url));
+
+  const signedDevolucionMap = new Map<string, string>();
+  if (devolucionPaths.length > 0) {
+    try {
+      const { data: signedDevoluciones } = await supabase.storage
+        .from('comprobantes')
+        .createSignedUrls(devolucionPaths, 3600);
+      signedDevoluciones?.forEach((item) => {
+        if (item.path && item.signedUrl) {
+          signedDevolucionMap.set(item.path, item.signedUrl);
+        }
+      });
+    } catch (err) {
+      console.warn('Error al firmar URLs de devoluciones en admin:', err);
+    }
+  }
+
   // 6. Mapear datos consolidados con la información de cada colaborador y correlativos
   const gastosConsolidados: GastoAdminItem[] = (gastosData || []).map((g) => {
     const userProfile = profileMap.get(g.user_id);
@@ -108,6 +129,9 @@ export default async function AdminDashboardPage() {
       monto_asignado: f.monto_asignado,
       estado: f.estado,
       comprobante_devolucion_url: f.comprobante_devolucion_url,
+      signedDevolucionUrl: f.comprobante_devolucion_url
+        ? signedDevolucionMap.get(f.comprobante_devolucion_url) || null
+        : null,
       monto_devuelto: f.monto_devuelto,
       created_at: f.created_at,
       nombre_empleado: userProfile?.nombre || 'Colaborador',

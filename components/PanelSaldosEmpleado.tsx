@@ -85,6 +85,8 @@ interface PanelSaldosEmpleadoProps {
   fondoActivo: FondoAsignadoActivo | null;
   totalReembolsosPendientes: number;
   gastosVinculados?: GastoDetalleItem[];
+  fondosHistoricos?: FondoAsignadoActivo[];
+  todosLosGastos?: GastoDetalleItem[];
   nombreUsuario?: string;
   areaUsuario?: string;
 }
@@ -93,11 +95,17 @@ export default function PanelSaldosEmpleado({
   fondoActivo,
   totalReembolsosPendientes,
   gastosVinculados = [],
+  fondosHistoricos = [],
+  todosLosGastos = [],
   nombreUsuario = 'Colaborador',
   areaUsuario = 'Terreno',
 }: PanelSaldosEmpleadoProps) {
   const [modalDevolucionOpen, setModalDevolucionOpen] = useState(false);
   const [modalCartolaOpen, setModalCartolaOpen] = useState(false);
+  const [mostrarHistoricos, setMostrarHistoricos] = useState(false);
+  const [fondoSeleccionadoCartola, setFondoSeleccionadoCartola] = useState<FondoAsignadoActivo | null>(null);
+  const [modalFotoUrl, setModalFotoUrl] = useState<string | null>(null);
+  const [modalFotoTitulo, setModalFotoTitulo] = useState<string>('Comprobante');
   const [montoDevolver, setMontoDevolver] = useState<number>(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -278,7 +286,72 @@ export default function PanelSaldosEmpleado({
         </div>
       </div>
 
-      {/* Modal Cartola del Fondo */}
+      {/* Historial de Viáticos / Fondos Cerrados del Empleado */}
+      {fondosHistoricos.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm space-y-2.5">
+          <button
+            type="button"
+            onClick={() => setMostrarHistoricos(!mostrarHistoricos)}
+            className="w-full flex items-center justify-between text-left text-xs font-bold text-slate-700 hover:text-slate-900 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+              <span>Historial de Viáticos Cerrados y Conciliados</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
+                {fondosHistoricos.length}
+              </span>
+            </div>
+            <span className="text-slate-400 text-xs font-medium">
+              {mostrarHistoricos ? '▲ Ocultar' : '▼ Ver'}
+            </span>
+          </button>
+
+          {mostrarHistoricos && (
+            <div className="pt-2 border-t border-slate-100 space-y-2">
+              {fondosHistoricos.map((fh) => {
+                const folioFondoH = formatFolioFondo(fh.correlativo, fh.id);
+                return (
+                  <div
+                    key={fh.id}
+                    className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 text-xs"
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-black text-slate-800 bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[11px]">
+                          {folioFondoH}
+                        </span>
+                        <strong className="text-slate-900">{fh.motivo}</strong>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Asignado: {formatCLP(fh.monto_asignado)} • Rendido: {formatCLP(fh.total_rendido)}
+                        {fh.monto_devuelto > 0 && (
+                          <span className="text-emerald-700 font-bold ml-1">
+                            • Devuelto: {formatCLP(fh.monto_devuelto)}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setFondoSeleccionadoCartola(fh)}
+                      className="px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 font-bold text-[11px] shadow-sm whitespace-nowrap"
+                    >
+                      Ver Cartola
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal Cartola del Fondo Activo */}
       {modalCartolaOpen && fondoActivo && (
         <ModalCartolaDetalle
           tipo="fondo"
@@ -299,11 +372,76 @@ export default function PanelSaldosEmpleado({
           gastosVinculados={gastosVinculados}
           isAdmin={false}
           onClose={() => setModalCartolaOpen(false)}
+          onVerFoto={(url, titulo) => {
+            setModalFotoTitulo(titulo);
+            setModalFotoUrl(url);
+          }}
           onDevolverSobrante={() => {
             setModalCartolaOpen(false);
             setModalDevolucionOpen(true);
           }}
         />
+      )}
+
+      {/* Modal Cartola de Fondo Histórico/Cerrado */}
+      {fondoSeleccionadoCartola && (
+        <ModalCartolaDetalle
+          tipo="fondo"
+          fondo={{
+            id: fondoSeleccionadoCartola.id,
+            correlativo: fondoSeleccionadoCartola.correlativo,
+            motivo: fondoSeleccionadoCartola.motivo,
+            monto_asignado: fondoSeleccionadoCartola.monto_asignado,
+            estado: fondoSeleccionadoCartola.estado as any,
+            monto_devuelto: fondoSeleccionadoCartola.monto_devuelto,
+            comprobante_devolucion_url: fondoSeleccionadoCartola.comprobante_devolucion_url || null,
+            created_at: fondoSeleccionadoCartola.created_at || new Date().toISOString(),
+            user_id: '',
+            nombre_empleado: nombreUsuario,
+            area_empleado: areaUsuario,
+            signedDevolucionUrl: fondoSeleccionadoCartola.signedDevolucionUrl || null,
+          }}
+          gastosVinculados={(todosLosGastos || []).filter(
+            (g) => g.fondo_id === fondoSeleccionadoCartola.id && g.tipo_rendicion === 'anticipo'
+          )}
+          isAdmin={false}
+          onClose={() => setFondoSeleccionadoCartola(null)}
+          onVerFoto={(url, titulo) => {
+            setModalFotoTitulo(titulo);
+            setModalFotoUrl(url);
+          }}
+        />
+      )}
+
+      {/* Modal Visor de Comprobantes para Panel de Empleado */}
+      {modalFotoUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setModalFotoUrl(null)}
+        >
+          <div
+            className="relative max-w-lg w-full bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-3.5 border-b border-slate-800 text-white">
+              <h3 className="text-xs font-bold truncate pr-3">{modalFotoTitulo}</h3>
+              <button
+                type="button"
+                onClick={() => setModalFotoUrl(null)}
+                className="text-white hover:text-red-400 bg-white/10 hover:bg-white/20 rounded-lg px-2.5 py-1 text-xs font-bold transition-colors"
+              >
+                ✕ Cerrar
+              </button>
+            </div>
+            <div className="flex items-center justify-center bg-black p-2 min-h-[250px] max-h-[70vh]">
+              <img
+                src={modalFotoUrl}
+                alt={modalFotoTitulo}
+                className="max-h-[65vh] w-auto object-contain rounded-lg"
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal Devolver Sobrante y Cerrar Fondo */}

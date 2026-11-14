@@ -2,8 +2,8 @@
 
 import { useState, useMemo, useActionState, useEffect, useRef } from 'react';
 import { modificarGasto, eliminarGasto, type FormState } from '@/app/rendiciones/actions';
-import { formatFolioGasto } from '@/lib/folios';
-import ModalCartolaDetalle, { type AbonoItem } from '@/components/ModalCartolaDetalle';
+import { formatFolioFondo, formatFolioGasto, formatFolioReembolso } from '@/lib/folios';
+import ModalCartolaDetalle, { type AbonoItem, type FondoDetalleItem, type GastoDetalleItem } from '@/components/ModalCartolaDetalle';
 
 export type GastoItem = {
   id: string;
@@ -25,6 +25,7 @@ export type GastoItem = {
 interface HistorialGastosProps {
   gastos: GastoItem[];
   abonos?: AbonoItem[];
+  fondos?: FondoDetalleItem[];
   nombreUsuario?: string;
   areaUsuario?: string;
 }
@@ -43,6 +44,7 @@ const CATEGORIAS = [
 export default function HistorialGastos({
   gastos,
   abonos = [],
+  fondos = [],
   nombreUsuario = 'Colaborador',
   areaUsuario = 'Terreno',
 }: HistorialGastosProps) {
@@ -51,6 +53,7 @@ export default function HistorialGastos({
   const [gastoToEdit, setGastoToEdit] = useState<GastoItem | null>(null);
   const [gastoToDelete, setGastoToDelete] = useState<GastoItem | null>(null);
   const [selectedGastoCartola, setSelectedGastoCartola] = useState<GastoItem | null>(null);
+  const [selectedFondoCartola, setSelectedFondoCartola] = useState<FondoDetalleItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -121,6 +124,15 @@ export default function HistorialGastos({
     });
     return mapa;
   }, [abonos]);
+
+  // Mapa de fondos por id para vincular y abrir cartola del fondo
+  const fondosMap = useMemo(() => {
+    const mapa = new Map<string, FondoDetalleItem>();
+    fondos.forEach((f) => {
+      mapa.set(f.id, f);
+    });
+    return mapa;
+  }, [fondos]);
 
   // Filtrado de gastos según el período seleccionado
   const filteredGastos = useMemo(() => {
@@ -310,10 +322,23 @@ export default function HistorialGastos({
       ) : (
         <div className="space-y-3">
           {filteredGastos.map((gasto) => {
+            const fondoAsociado = gasto.fondo_id ? fondosMap.get(gasto.fondo_id) : null;
+            const esAnticipo = gasto.tipo_rendicion === 'anticipo';
+            const folioFondo = fondoAsociado ? formatFolioFondo(fondoAsociado.correlativo, fondoAsociado.id) : null;
             const folioGasto = formatFolioGasto(gasto.correlativo, gasto.id);
+            const folioReembolso = formatFolioReembolso(gasto.correlativo, gasto.id);
+
             const abonosGasto = abonosPorGasto.get(gasto.id) || [];
             const totalAbonado = abonosGasto.reduce((s, a) => s + a.monto_abonado, 0);
             const tieneAbonosParciales = totalAbonado > 0 && totalAbonado < gasto.monto;
+
+            const handleOpenCartola = () => {
+              if (esAnticipo && fondoAsociado) {
+                setSelectedFondoCartola(fondoAsociado);
+              } else {
+                setSelectedGastoCartola(gasto);
+              }
+            };
 
             return (
               <div
@@ -324,10 +349,15 @@ export default function HistorialGastos({
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => setSelectedGastoCartola(gasto)}
-                      className="font-mono font-black text-xs text-sky-700 bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-200 hover:bg-sky-100"
+                      onClick={handleOpenCartola}
+                      title={esAnticipo && fondoAsociado ? `Ver Cartola del Fondo Maestro ${folioFondo}` : 'Ver Cartola'}
+                      className={`font-mono font-black text-xs px-2 py-0.5 rounded-lg border transition-colors ${
+                        esAnticipo
+                          ? 'text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100'
+                          : 'text-amber-800 bg-amber-50 border-amber-200 hover:bg-amber-100'
+                      }`}
                     >
-                      {folioGasto}
+                      {esAnticipo ? (folioFondo || folioGasto) : folioReembolso}
                     </button>
                     <span
                       className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${getCategoriaBadgeClass(
@@ -338,6 +368,7 @@ export default function HistorialGastos({
                     </span>
                     <span className="text-xs font-semibold text-slate-600">
                       Doc: #{gasto.numero_comprobante}
+                      {esAnticipo && <span className="text-[10px] text-slate-400 font-mono ml-1">({folioGasto})</span>}
                     </span>
                   </div>
 
@@ -355,9 +386,9 @@ export default function HistorialGastos({
 
                 {/* Badges de Modalidad y Estado Contable */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {gasto.tipo_rendicion === 'anticipo' ? (
+                  {esAnticipo ? (
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
-                      Anticipo / Fondo
+                      Viático / Fondo {folioFondo || ''}
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
@@ -389,7 +420,7 @@ export default function HistorialGastos({
                     {/* Botón Ver Cartola */}
                     <button
                       type="button"
-                      onClick={() => setSelectedGastoCartola(gasto)}
+                      onClick={handleOpenCartola}
                       className="px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-300 text-sky-800 hover:bg-sky-100 text-xs font-bold shadow-sm"
                     >
                       Ver Cartola
@@ -487,6 +518,27 @@ export default function HistorialGastos({
           abonos={abonosPorGasto.get(selectedGastoCartola.id) || []}
           isAdmin={false}
           onClose={() => setSelectedGastoCartola(null)}
+          onVerFoto={(url, titulo) => {
+            setModalFotoTitulo(titulo);
+            setModalFoto(url);
+          }}
+        />
+      )}
+
+      {/* Modal Cartola / Detalle de Fondo Maestro para Empleado */}
+      {selectedFondoCartola && (
+        <ModalCartolaDetalle
+          tipo="fondo"
+          fondo={selectedFondoCartola}
+          gastosVinculados={gastos
+            .filter((g) => g.fondo_id === selectedFondoCartola.id && g.tipo_rendicion === 'anticipo')
+            .map((g) => ({
+              ...g,
+              nombre_empleado: nombreUsuario,
+              area_empleado: areaUsuario,
+            }))}
+          isAdmin={false}
+          onClose={() => setSelectedFondoCartola(null)}
           onVerFoto={(url, titulo) => {
             setModalFotoTitulo(titulo);
             setModalFoto(url);

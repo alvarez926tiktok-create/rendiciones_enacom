@@ -485,6 +485,13 @@ export async function devolverSobrante(
       return { error: `Error al cerrar el fondo: ${updateError.message}` };
     }
 
+    // 4. Actualizar todas las boletas vinculadas a este fondo a estado 'cerrado'
+    await supabase
+      .from('gastos')
+      .update({ estado: 'cerrado' })
+      .eq('fondo_id', fondoId)
+      .eq('user_id', user.id);
+
     revalidatePath('/rendiciones');
     revalidatePath('/admin');
     return {

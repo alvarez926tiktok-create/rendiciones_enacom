@@ -4,7 +4,7 @@ import HeaderEmpleado from '@/components/HeaderEmpleado';
 import FormularioGasto from '@/components/FormularioGasto';
 import HistorialGastos, { type GastoItem } from '@/components/HistorialGastos';
 import PanelSaldosEmpleado, { type FondoAsignadoActivo } from '@/components/PanelSaldosEmpleado';
-import { type AbonoItem, type GastoDetalleItem } from '@/components/ModalCartolaDetalle';
+import { type AbonoItem, type GastoDetalleItem, type FondoDetalleItem } from '@/components/ModalCartolaDetalle';
 
 export default async function RendicionesPage() {
   const supabase = await createClient();
@@ -67,15 +67,16 @@ export default async function RendicionesPage() {
     }
   }
 
-  // 4. Obtener fondo activo del usuario
-  const { data: fondoActivoRaw } = await supabase
+  // 4. Obtener todos los fondos asignados del usuario (activos y cerrados)
+  const { data: todosLosFondosData } = await supabase
     .from('fondos_asignados')
     .select('*')
     .eq('user_id', user.id)
-    .in('estado', ['activo', 'por_devolver'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order('created_at', { ascending: false });
+
+  const todosLosFondos = todosLosFondosData || [];
+  const fondoActivoRaw =
+    todosLosFondos.find((f) => f.estado === 'activo' || f.estado === 'por_devolver') || null;
 
   let totalRendidoEnFondo = 0;
   if (fondoActivoRaw && gastos) {
@@ -100,6 +101,7 @@ export default async function RendicionesPage() {
   // 6. Generar URLs firmadas seguras para boletas, pagos y devoluciones
   let gastosConUrls: GastoItem[] = [];
   let abonosConUrls: AbonoItem[] = [];
+  let fondosConUrls: FondoDetalleItem[] = [];
   let signedDevolucionUrlFondo: string | null = null;
 
   try {
@@ -111,9 +113,9 @@ export default async function RendicionesPage() {
     abonosRaw.forEach((a) => {
       if (a.comprobante_pago_url) pathsToSign.push(a.comprobante_pago_url);
     });
-    if (fondoActivoRaw?.comprobante_devolucion_url) {
-      pathsToSign.push(fondoActivoRaw.comprobante_devolucion_url);
-    }
+    todosLosFondos.forEach((f) => {
+      if (f.comprobante_devolucion_url) pathsToSign.push(f.comprobante_devolucion_url);
+    });
 
     const { data: signedData, error: signedError } = await supabase.storage
       .from('comprobantes')
@@ -161,6 +163,22 @@ export default async function RendicionesPage() {
       notas: a.notas,
       created_at: a.created_at,
     }));
+
+    fondosConUrls = todosLosFondos.map((f) => ({
+      id: f.id,
+      correlativo: f.correlativo || null,
+      user_id: f.user_id,
+      admin_id: f.admin_id,
+      motivo: f.motivo,
+      monto_asignado: f.monto_asignado,
+      estado: f.estado,
+      comprobante_devolucion_url: f.comprobante_devolucion_url || null,
+      signedDevolucionUrl: f.comprobante_devolucion_url ? signedMap.get(f.comprobante_devolucion_url) || null : null,
+      monto_devuelto: f.monto_devuelto || 0,
+      created_at: f.created_at,
+      nombre_empleado: profile?.nombre || 'Colaborador',
+      area_empleado: profile?.area || 'Terreno',
+    }));
   } catch (err) {
     console.error('Error al procesar URLs firmadas:', err);
     gastosConUrls = (gastos || []).map((g) => ({
@@ -178,6 +196,22 @@ export default async function RendicionesPage() {
       created_at: g.created_at,
       signedUrl: null,
       signedPagoUrl: null,
+    }));
+
+    fondosConUrls = todosLosFondos.map((f) => ({
+      id: f.id,
+      correlativo: f.correlativo || null,
+      user_id: f.user_id,
+      admin_id: f.admin_id,
+      motivo: f.motivo,
+      monto_asignado: f.monto_asignado,
+      estado: f.estado,
+      comprobante_devolucion_url: f.comprobante_devolucion_url || null,
+      signedDevolucionUrl: null,
+      monto_devuelto: f.monto_devuelto || 0,
+      created_at: f.created_at,
+      nombre_empleado: profile?.nombre || 'Colaborador',
+      area_empleado: profile?.area || 'Terreno',
     }));
   }
 
@@ -197,14 +231,39 @@ export default async function RendicionesPage() {
       }
     : null;
 
+  // Gastos completos mapeados para cartolas de fondos
+  const todosLosGastosDetalle: GastoDetalleItem[] = gastosConUrls.map((g) => ({
+    ...g,
+    nombre_empleado: profile?.nombre || 'Colaborador',
+    area_empleado: profile?.area || 'Terreno',
+  }));
+
   // Gastos vinculados al fondo activo para la Cartola
-  const gastosVinculadosFondo: GastoDetalleItem[] = gastosConUrls
-    .filter((g) => fondoActivoRaw && g.fondo_id === fondoActivoRaw.id && g.tipo_rendicion === 'anticipo')
-    .map((g) => ({
-      ...g,
-      nombre_empleado: profile?.nombre || 'Colaborador',
-      area_empleado: profile?.area || 'Terreno',
-    }));
+  const gastosVinculadosFondo: GastoDetalleItem[] = todosLosGastosDetalle.filter(
+    (g) => fondoActivoRaw && g.fondo_id === fondoActivoRaw.id && g.tipo_rendicion === 'anticipo'
+  );
+
+  // Fondos cerrados para historial de viáticos
+  const fondosHistoricosCerrados: FondoAsignadoActivo[] = fondosConUrls
+    .filter((f) => f.estado === 'cerrado')
+    .map((f) => {
+      const rendidoF = gastosConUrls
+        .filter((g) => g.fondo_id === f.id && g.tipo_rendicion === 'anticipo')
+        .reduce((sum, g) => sum + g.monto, 0);
+      return {
+        id: f.id,
+        correlativo: f.correlativo || null,
+        motivo: f.motivo,
+        monto_asignado: f.monto_asignado,
+        total_rendido: rendidoF,
+        saldo_restante: 0,
+        monto_devuelto: f.monto_devuelto || 0,
+        estado: f.estado,
+        comprobante_devolucion_url: f.comprobante_devolucion_url || null,
+        signedDevolucionUrl: f.signedDevolucionUrl || null,
+        created_at: f.created_at,
+      };
+    });
 
   return (
     <div className="min-h-screen bg-slate-100 pb-12">
@@ -225,6 +284,8 @@ export default async function RendicionesPage() {
               fondoActivo={fondoActivoData}
               totalReembolsosPendientes={totalReembolsosPendientes}
               gastosVinculados={gastosVinculadosFondo}
+              fondosHistoricos={fondosHistoricosCerrados}
+              todosLosGastos={todosLosGastosDetalle}
               nombreUsuario={profile?.nombre}
               areaUsuario={profile?.area}
             />
@@ -249,6 +310,7 @@ export default async function RendicionesPage() {
             <HistorialGastos
               gastos={gastosConUrls}
               abonos={abonosConUrls}
+              fondos={fondosConUrls}
               nombreUsuario={profile?.nombre}
               areaUsuario={profile?.area}
             />
