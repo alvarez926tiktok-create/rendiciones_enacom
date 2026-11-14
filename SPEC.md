@@ -45,13 +45,15 @@ Desarrollar una aplicación web **Mobile-First** ultra simple y rápida para la 
   2. **Número de Comprobante:** Texto identificador del comprobante/boleta/factura.
   3. **Monto:** Número entero sin decimales (CLP).
   4. **Foto del Comprobante:** Permite abrir la cámara trasera en dispositivos móviles (`capture="environment"` con `accept="image/*"`).
-- **Restricciones:** No puede editar ni eliminar rendiciones ya enviadas.
+48: - **Restricciones:** No puede editar ni eliminar rendiciones ya enviadas.
+- **Filtros Temporales en Historial:** Consulta de rendiciones por períodos ('Todos', 'Hoy / Del día', 'Últimos 7 días', 'Último mes', 'Mes en particular') con tarjeta/banner de total acumulado en el período.
 
 ### 4.2. Rol `admin`
 - **Experiencia de Usuario:**
   - Panel centralizado con visibilidad completa de todas las rendiciones de todos los usuarios.
-  - **Tarjetas de Sumatoria Total:** Cálculo dinámico del monto total general.
-  - **Filtros Dinámicos:**
+  - **Tarjetas de Sumatoria Total:** Cálculo dinámico del monto total general, cantidad de boletas y desglose por área.
+  - **Filtros Dinámicos Combinados:**
+    - Por **Fecha / Período**: 'Todos', 'Últimos 7 días', 'Últimos 15 días', 'Último mes', 'Mes en particular' (input month nativo), 'Último año'.
     - Por **Usuario**.
     - Por **Área de la empresa** (lista fija obligatoria):
       - `Ingeniería Eléctrica`
@@ -61,8 +63,12 @@ Desarrollar una aplicación web **Mobile-First** ultra simple y rápida para la 
       - `Ventas`
       - `Logística`
       - `Gerencia`
+    - Por **Categoría**.
   - **Tabla de Rendiciones:** Registro detallado de todas las rendiciones con datos del empleado, área, fecha, categoría, comprobante y monto.
-  - **Modal Visor de Comprobantes:** Visualización en alta resolución de la foto de la boleta o factura.
+  - **Modal Visor de Comprobantes:** Visualización en alta resolución de la foto de la boleta o factura bajo demanda.
+  - **Módulo de Gestión de Personal (Usuarios):**
+    - Creación directa de usuarios (Nombre, Email, Contraseña temporal, Rol, Área).
+    - Actualización y cambio de contraseña seguro de colaboradores mediante Supabase Admin API (`updateUserById`).
 
 ---
 

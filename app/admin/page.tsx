@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { signOut } from '@/app/auth/actions';
-import PanelAdmin, { type GastoAdminItem, type ProfileItem } from '@/components/PanelAdmin';
+import AdminViewContainer from '@/components/AdminViewContainer';
+import { type GastoAdminItem, type ProfileItem } from '@/components/PanelAdmin';
 
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
@@ -97,7 +98,7 @@ export default async function AdminDashboardPage() {
 
       {/* Contenido principal del Dashboard */}
       <main className="max-w-6xl mx-auto px-4 pt-6">
-        <PanelAdmin gastos={gastosConsolidados} profiles={profiles} />
+        <AdminViewContainer gastos={gastosConsolidados} profiles={profiles} />
       </main>
     </div>
   );

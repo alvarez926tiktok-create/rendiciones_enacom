@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 export type GastoItem = {
   id: string;
@@ -16,10 +16,14 @@ interface HistorialGastosProps {
   gastos: GastoItem[];
 }
 
+type PeriodoFiltro = 'todos' | 'hoy' | '7d' | '30d' | 'mes_particular';
+
 export default function HistorialGastos({ gastos }: HistorialGastosProps) {
   const [modalFoto, setModalFoto] = useState<string | null>(null);
-
-  const totalAcumulado = gastos.reduce((sum, g) => sum + g.monto, 0);
+  const [periodo, setPeriodo] = useState<PeriodoFiltro>('todos');
+  const [mesParticular, setMesParticular] = useState<string>(() => {
+    return new Date().toISOString().slice(0, 7);
+  });
 
   const formatCLP = (amount: number) => {
     return new Intl.NumberFormat('es-CL', {
@@ -57,32 +61,164 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
     }
   };
 
+  // Filtrado de gastos según el período seleccionado
+  const filteredGastos = useMemo(() => {
+    const now = new Date();
+
+    return gastos.filter((g) => {
+      const gDate = new Date(g.created_at);
+
+      if (periodo === 'todos') {
+        return true;
+      }
+      if (periodo === 'hoy') {
+        return (
+          gDate.getDate() === now.getDate() &&
+          gDate.getMonth() === now.getMonth() &&
+          gDate.getFullYear() === now.getFullYear()
+        );
+      }
+      if (periodo === '7d') {
+        const sieteDiasAtras = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return gDate >= sieteDiasAtras;
+      }
+      if (periodo === '30d') {
+        const treintaDiasAtras = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        return gDate >= treintaDiasAtras;
+      }
+      if (periodo === 'mes_particular') {
+        const gMonthStr = g.created_at.slice(0, 7);
+        return gMonthStr === mesParticular;
+      }
+      return true;
+    });
+  }, [gastos, periodo, mesParticular]);
+
+  const totalPeriodo = useMemo(() => {
+    return filteredGastos.reduce((sum, g) => sum + g.monto, 0);
+  }, [filteredGastos]);
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+      {/* Título */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
         <div>
           <h2 className="text-lg font-black text-slate-900">
             Mis Rendiciones Enviadas
           </h2>
           <p className="text-xs text-slate-500">
-            Total acumulado: <span className="font-bold text-slate-800">{formatCLP(totalAcumulado)}</span>
+            Consulta tus gastos por fecha y período.
           </p>
         </div>
         <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
-          {gastos.length} {gastos.length === 1 ? 'registro' : 'registros'}
+          {filteredGastos.length} {filteredGastos.length === 1 ? 'doc' : 'docs'}
         </span>
       </div>
 
-      {gastos.length === 0 ? (
+      {/* Selector de Período (Pills Mobile-First) */}
+      <div className="space-y-2">
+        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          Filtrar Período
+        </label>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => setPeriodo('todos')}
+            className={`py-2 px-2.5 rounded-xl border text-center transition-colors ${
+              periodo === 'todos'
+                ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            Todos
+          </button>
+          <button
+            type="button"
+            onClick={() => setPeriodo('hoy')}
+            className={`py-2 px-2.5 rounded-xl border text-center transition-colors ${
+              periodo === 'hoy'
+                ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            Hoy / Del día
+          </button>
+          <button
+            type="button"
+            onClick={() => setPeriodo('7d')}
+            className={`py-2 px-2.5 rounded-xl border text-center transition-colors ${
+              periodo === '7d'
+                ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            Últimos 7 días
+          </button>
+          <button
+            type="button"
+            onClick={() => setPeriodo('30d')}
+            className={`py-2 px-2.5 rounded-xl border text-center transition-colors ${
+              periodo === '30d'
+                ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            Último mes
+          </button>
+          <button
+            type="button"
+            onClick={() => setPeriodo('mes_particular')}
+            className={`py-2 px-2.5 rounded-xl border text-center transition-colors col-span-2 sm:col-span-1 ${
+              periodo === 'mes_particular'
+                ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            Mes particular
+          </button>
+        </div>
+
+        {periodo === 'mes_particular' && (
+          <div className="pt-1 flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-600">Seleccionar mes:</span>
+            <input
+              type="month"
+              value={mesParticular}
+              onChange={(e) => setMesParticular(e.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-1.5 text-xs text-slate-800 font-bold focus:border-sky-500 focus:outline-none"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Banner de Total Acumulado en el Período */}
+      <div className="rounded-xl bg-slate-900 text-white p-4 shadow-sm flex items-center justify-between">
+        <div>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+            Total Rendido en el Período
+          </span>
+          <span className="text-2xl font-black text-white block mt-0.5">
+            {formatCLP(totalPeriodo)}
+          </span>
+        </div>
+        <div className="text-right">
+          <span className="text-xs font-bold text-sky-400 bg-sky-950/80 px-2.5 py-1 rounded-lg border border-sky-800">
+            {filteredGastos.length} {filteredGastos.length === 1 ? 'boleta' : 'boletas'}
+          </span>
+        </div>
+      </div>
+
+      {/* Lista de Rendiciones */}
+      {filteredGastos.length === 0 ? (
         <div className="text-center py-8 px-4 text-slate-500">
-          <p className="text-sm font-medium">Aún no has registrado ninguna rendición.</p>
+          <p className="text-sm font-medium">No hay rendiciones registradas en este período.</p>
           <p className="text-xs text-slate-400 mt-1">
-            Usa el formulario superior para registrar tu primer gasto.
+            Cambia el filtro de período o sube un comprobante con el formulario.
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {gastos.map((gasto) => (
+          {filteredGastos.map((gasto) => (
             <div
               key={gasto.id}
               className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors flex items-center justify-between gap-3"

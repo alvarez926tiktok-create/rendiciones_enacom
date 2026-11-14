@@ -48,10 +48,16 @@ const CATEGORIAS = [
   'Otro',
 ] as const;
 
+type RangoFecha = 'todos' | '7d' | '15d' | '30d' | 'mes_particular' | '1y';
+
 export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
   const [selectedArea, setSelectedArea] = useState<string>('Todas');
   const [selectedUser, setSelectedUser] = useState<string>('Todos');
   const [selectedCategoria, setSelectedCategoria] = useState<string>('Todas');
+  const [selectedRangoFecha, setSelectedRangoFecha] = useState<RangoFecha>('todos');
+  const [selectedMesParticular, setSelectedMesParticular] = useState<string>(() => {
+    return new Date().toISOString().slice(0, 7);
+  });
 
   // Estado para el modal de visualización de fotos
   const [modalGasto, setModalGasto] = useState<GastoAdminItem | null>(null);
@@ -96,15 +102,43 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
     }
   };
 
-  // Filtrado de gastos
+  // Filtrado reactivo de gastos (Fecha + Área + Usuario + Categoría)
   const filteredGastos = useMemo(() => {
+    const now = new Date();
+
     return gastos.filter((g) => {
+      // 1. Filtro por Área
       const matchArea = selectedArea === 'Todas' || g.area_empleado === selectedArea;
+
+      // 2. Filtro por Usuario
       const matchUser = selectedUser === 'Todos' || g.user_id === selectedUser;
+
+      // 3. Filtro por Categoría
       const matchCat = selectedCategoria === 'Todas' || g.categoria === selectedCategoria;
-      return matchArea && matchUser && matchCat;
+
+      // 4. Filtro por Rango Temporal
+      let matchDate = true;
+      const gDate = new Date(g.created_at);
+
+      if (selectedRangoFecha === '7d') {
+        const d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        matchDate = gDate >= d;
+      } else if (selectedRangoFecha === '15d') {
+        const d = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000);
+        matchDate = gDate >= d;
+      } else if (selectedRangoFecha === '30d') {
+        const d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        matchDate = gDate >= d;
+      } else if (selectedRangoFecha === '1y') {
+        const d = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        matchDate = gDate >= d;
+      } else if (selectedRangoFecha === 'mes_particular') {
+        matchDate = g.created_at.slice(0, 7) === selectedMesParticular;
+      }
+
+      return matchArea && matchUser && matchCat && matchDate;
     });
-  }, [gastos, selectedArea, selectedUser, selectedCategoria]);
+  }, [gastos, selectedArea, selectedUser, selectedCategoria, selectedRangoFecha, selectedMesParticular]);
 
   // Sumatorias dinámicas
   const totalRendido = useMemo(() => {
@@ -113,32 +147,54 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
 
   const cantidadBoletas = filteredGastos.length;
 
-  // Desglose acumulado por cada una de las áreas corporativas
+  // Desglose acumulado por cada una de las áreas corporativas según filtros activos (excepto área)
   const desglosePorArea = useMemo(() => {
     const mapa: Record<string, number> = {};
     AREAS.forEach((a) => (mapa[a] = 0));
-    // Se calcula sobre el subconjunto filtrado por usuario/categoría para consistencia
+
+    const now = new Date();
     const baseGastos = gastos.filter((g) => {
       const matchUser = selectedUser === 'Todos' || g.user_id === selectedUser;
       const matchCat = selectedCategoria === 'Todas' || g.categoria === selectedCategoria;
-      return matchUser && matchCat;
+
+      let matchDate = true;
+      const gDate = new Date(g.created_at);
+      if (selectedRangoFecha === '7d') {
+        matchDate = gDate >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      } else if (selectedRangoFecha === '15d') {
+        matchDate = gDate >= new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000);
+      } else if (selectedRangoFecha === '30d') {
+        matchDate = gDate >= new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      } else if (selectedRangoFecha === '1y') {
+        matchDate = gDate >= new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+      } else if (selectedRangoFecha === 'mes_particular') {
+        matchDate = g.created_at.slice(0, 7) === selectedMesParticular;
+      }
+
+      return matchUser && matchCat && matchDate;
     });
+
     baseGastos.forEach((g) => {
       if (mapa[g.area_empleado] !== undefined) {
         mapa[g.area_empleado] += g.monto;
       }
     });
+
     return mapa;
-  }, [gastos, selectedUser, selectedCategoria]);
+  }, [gastos, selectedUser, selectedCategoria, selectedRangoFecha, selectedMesParticular]);
 
   const resetFilters = () => {
     setSelectedArea('Todas');
     setSelectedUser('Todos');
     setSelectedCategoria('Todas');
+    setSelectedRangoFecha('todos');
   };
 
   const hasActiveFilters =
-    selectedArea !== 'Todas' || selectedUser !== 'Todos' || selectedCategoria !== 'Todas';
+    selectedArea !== 'Todas' ||
+    selectedUser !== 'Todos' ||
+    selectedCategoria !== 'Todas' ||
+    selectedRangoFecha !== 'todos';
 
   // Abrir modal y obtener foto en alta resolución
   const handleVerComprobante = async (gasto: GastoAdminItem) => {
@@ -207,7 +263,7 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
             {cantidadBoletas > 0 ? formatCLP(Math.round(totalRendido / cantidadBoletas)) : '$0'}
           </p>
           <span className="text-[11px] font-medium text-slate-500 mt-1 block">
-            Cálculo instantáneo
+            Cálculo reactivo en tiempo real
           </span>
         </div>
       </section>
@@ -249,31 +305,70 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
         </div>
       </section>
 
-      {/* 3. Barra de Filtros Simples */}
-      <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <h2 className="text-sm font-bold text-slate-900">
-            Filtros de Búsqueda
-          </h2>
+      {/* 3. Barra de Filtros Avanzados (Fecha + Área + Usuario + Categoría) */}
+      <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">
+              Filtros Avanzados de Búsqueda
+            </h2>
+            <p className="text-xs text-slate-400">
+              Ajusta los parámetros para cuadratura financiera y auditoría.
+            </p>
+          </div>
           {hasActiveFilters && (
             <button
               type="button"
               onClick={resetFilters}
-              className="text-xs font-bold text-sky-600 hover:text-sky-800 self-start sm:self-auto"
+              className="text-xs font-bold text-sky-600 hover:text-sky-800 self-start sm:self-auto bg-sky-50 px-3 py-1.5 rounded-lg border border-sky-200 transition-colors"
             >
               ✕ Limpiar todos los filtros
             </button>
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Filtro Rango Temporal */}
+          <div>
+            <label
+              htmlFor="filtro-fecha"
+              className="block text-xs font-bold text-slate-700 mb-1"
+            >
+              Período / Rango Temporal
+            </label>
+            <select
+              id="filtro-fecha"
+              value={selectedRangoFecha}
+              onChange={(e) => setSelectedRangoFecha(e.target.value as RangoFecha)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 font-medium focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+            >
+              <option value="todos">Todos los registros</option>
+              <option value="7d">Últimos 7 días</option>
+              <option value="15d">Últimos 15 días</option>
+              <option value="30d">Último mes (30 días)</option>
+              <option value="mes_particular">Mes en particular...</option>
+              <option value="1y">Último año (365 días)</option>
+            </select>
+
+            {selectedRangoFecha === 'mes_particular' && (
+              <div className="mt-2">
+                <input
+                  type="month"
+                  value={selectedMesParticular}
+                  onChange={(e) => setSelectedMesParticular(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs text-slate-800 font-bold focus:border-sky-500 focus:outline-none"
+                />
+              </div>
+            )}
+          </div>
+
           {/* Filtro Área */}
           <div>
             <label
               htmlFor="filtro-area"
               className="block text-xs font-bold text-slate-700 mb-1"
             >
-              Área
+              Área de la Empresa
             </label>
             <select
               id="filtro-area"
@@ -351,9 +446,9 @@ export default function PanelAdmin({ gastos, profiles }: PanelAdminProps) {
 
         {filteredGastos.length === 0 ? (
           <div className="text-center py-12 px-4 text-slate-500">
-            <p className="text-base font-semibold">No se encontraron rendiciones.</p>
+            <p className="text-base font-semibold">No se encontraron rendiciones con los filtros actuales.</p>
             <p className="text-xs text-slate-400 mt-1">
-              Prueba cambiando o limpiando los filtros seleccionados.
+              Prueba cambiando el rango de fechas o limpiando los filtros seleccionados.
             </p>
           </div>
         ) : (
