@@ -3,9 +3,12 @@
 import { useState, useMemo, useActionState, useEffect, useRef } from 'react';
 import { obtenerUrlComprobante } from '@/app/admin/actions';
 import { asignarFondo, reembolsarGasto, type FondoActionState } from '@/app/admin/fondos-actions';
+import { formatFolioFondo, formatFolioGasto } from '@/lib/folios';
+import ModalCartolaDetalle, { type AbonoItem } from '@/components/ModalCartolaDetalle';
 
 export interface GastoAdminItem {
   id: string;
+  correlativo?: number | null;
   user_id: string;
   categoria: string;
   numero_comprobante: string;
@@ -23,6 +26,7 @@ export interface GastoAdminItem {
 
 export interface FondoAdminItem {
   id: string;
+  correlativo?: number | null;
   user_id: string;
   admin_id: string | null;
   motivo: string;
@@ -48,6 +52,7 @@ interface PanelAdminProps {
   gastos: GastoAdminItem[];
   profiles: ProfileItem[];
   fondos?: FondoAdminItem[];
+  abonos?: AbonoItem[];
 }
 
 const AREAS = [
@@ -71,7 +76,12 @@ const CATEGORIAS = [
 
 type RangoFecha = 'todos' | '7d' | '15d' | '30d' | 'mes_particular' | '1y';
 
-export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdminProps) {
+export default function PanelAdmin({
+  gastos,
+  profiles,
+  fondos = [],
+  abonos = [],
+}: PanelAdminProps) {
   // Filtros reactivos
   const [selectedArea, setSelectedArea] = useState<string>('Todas');
   const [selectedUser, setSelectedUser] = useState<string>('Todos');
@@ -88,6 +98,13 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
   // Modales
   const [modalAsignarOpen, setModalAsignarOpen] = useState<boolean>(false);
   const [gastoToReembolsar, setGastoToReembolsar] = useState<GastoAdminItem | null>(null);
+
+  // Modal Cartola / Detalle
+  const [cartolaData, setCartolaData] = useState<{
+    tipo: 'gasto' | 'fondo';
+    gasto?: GastoAdminItem | null;
+    fondo?: FondoAdminItem | null;
+  } | null>(null);
 
   // Modal Visor de Comprobantes / Fotos
   const [modalTitle, setModalTitle] = useState<string>('');
@@ -159,7 +176,6 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
     }
   };
 
-  // Texto legible del período para el informe PDF
   const getTextoPeriodo = () => {
     switch (selectedRangoFecha) {
       case '7d':
@@ -183,42 +199,42 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
     return p ? `${p.nombre} (${p.area})` : 'Colaborador Específico';
   };
 
-  // Filtrado reactivo de gastos (Fecha + Área + Usuario + Categoría + Estado)
+  // Mapa de abonos agrupados por gasto_id
+  const abonosPorGasto = useMemo(() => {
+    const mapa = new Map<string, AbonoItem[]>();
+    abonos.forEach((a) => {
+      const arr = mapa.get(a.gasto_id) || [];
+      arr.push(a);
+      mapa.set(a.gasto_id, arr);
+    });
+    return mapa;
+  }, [abonos]);
+
+  // Filtrado reactivo de gastos
   const filteredGastos = useMemo(() => {
     const now = new Date();
 
     return gastos.filter((g) => {
-      // 1. Filtro por Área
       const matchArea = selectedArea === 'Todas' || g.area_empleado === selectedArea;
-
-      // 2. Filtro por Usuario
       const matchUser = selectedUser === 'Todos' || g.user_id === selectedUser;
-
-      // 3. Filtro por Categoría
       const matchCat = selectedCategoria === 'Todas' || g.categoria === selectedCategoria;
 
-      // 4. Filtro por Estado
       let matchEstado = true;
       if (selectedEstado === 'Por Pagar') matchEstado = g.estado === 'por_pagar';
       else if (selectedEstado === 'Aplicado a Fondo') matchEstado = g.estado === 'aplicado_a_fondo';
       else if (selectedEstado === 'Cerrado') matchEstado = g.estado === 'cerrado';
 
-      // 5. Filtro por Rango Temporal
       let matchDate = true;
       const gDate = new Date(g.created_at);
 
       if (selectedRangoFecha === '7d') {
-        const d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        matchDate = gDate >= d;
+        matchDate = gDate >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       } else if (selectedRangoFecha === '15d') {
-        const d = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000);
-        matchDate = gDate >= d;
+        matchDate = gDate >= new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000);
       } else if (selectedRangoFecha === '30d') {
-        const d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        matchDate = gDate >= d;
+        matchDate = gDate >= new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       } else if (selectedRangoFecha === '1y') {
-        const d = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-        matchDate = gDate >= d;
+        matchDate = gDate >= new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
       } else if (selectedRangoFecha === 'mes_particular') {
         matchDate = g.created_at.slice(0, 7) === selectedMesParticular;
       }
@@ -227,15 +243,20 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
     });
   }, [gastos, selectedArea, selectedUser, selectedCategoria, selectedEstado, selectedRangoFecha, selectedMesParticular]);
 
-  // CÁLCULOS DEL BALANCE CONTABLE (Reactivas a filtros)
-  // 1. Total Por Pagar a Empleados (Reembolsos pendientes)
+  // CÁLCULOS DEL BALANCE CONTABLE (Reactivas a filtros y descontando abonos parciales)
+  // 1. Total Por Pagar a Empleados
   const totalPorPagar = useMemo(() => {
     return filteredGastos
       .filter((g) => g.tipo_rendicion === 'reembolso' && g.estado === 'por_pagar')
-      .reduce((sum, g) => sum + g.monto, 0);
-  }, [filteredGastos]);
+      .reduce((sum, g) => {
+        const abonosGasto = abonosPorGasto.get(g.id) || [];
+        const abonado = abonosGasto.reduce((s, a) => s + a.monto_abonado, 0);
+        const pendiente = Math.max(0, g.monto - abonado);
+        return sum + pendiente;
+      }, 0);
+  }, [filteredGastos, abonosPorGasto]);
 
-  // 2. Total Fondos Activos / Por Devolver (Saldos pendientes en manos de empleados)
+  // 2. Total Fondos Activos / Por Devolver
   const totalFondosActivos = useMemo(() => {
     return fondos
       .filter((f) => {
@@ -253,19 +274,16 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
       }, 0);
   }, [fondos, gastos, selectedUser, selectedArea]);
 
-  // 3. Total Saldado / Cerrado (Histórico conciliado en base a filtros)
+  // 3. Total Saldado / Cerrado
   const totalSaldado = useMemo(() => {
     return filteredGastos
       .filter((g) => g.estado === 'cerrado' || g.estado === 'aplicado_a_fondo')
       .reduce((sum, g) => sum + g.monto, 0);
   }, [filteredGastos]);
 
-  // Totales generales filtrados
   const totalRendido = useMemo(() => {
     return filteredGastos.reduce((sum, g) => sum + g.monto, 0);
   }, [filteredGastos]);
-
-  const cantidadBoletas = filteredGastos.length;
 
   // Desglose acumulado por área
   const desglosePorArea = useMemo(() => {
@@ -316,7 +334,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
     selectedEstado !== 'Todos' ||
     selectedRangoFecha !== 'todos';
 
-  // Abrir modal y obtener foto en alta resolución
+  // Modal de Fotos
   const handleVerFoto = async (fotoUrl: string, title: string) => {
     setModalTitle(title);
     setModalImageUrl(null);
@@ -346,7 +364,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
 
   return (
     <div className="space-y-6">
-      {/* Membrete Oficial para Exportación PDF (Solo se ve al imprimir) */}
+      {/* Membrete Oficial para Exportación PDF */}
       <div className="hidden print:block border-b-2 border-slate-900 pb-4 mb-4">
         <div className="flex justify-between items-start">
           <div>
@@ -390,7 +408,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
         </div>
       </div>
 
-      {/* Alertas de Éxito / Error */}
+      {/* Alertas */}
       {(asignarState?.message || reembolsarState?.message) && (
         <div className="p-4 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-sm font-bold flex items-center justify-between shadow-sm">
           <span>✓ {asignarState?.message || reembolsarState?.message}</span>
@@ -402,9 +420,8 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
         </div>
       )}
 
-      {/* 1. TARJETAS DE BALANCE CONTABLE (Reactivas a filtros) */}
+      {/* 1. TARJETAS DE BALANCE CONTABLE */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Tarjeta 1: Total Por Pagar a Empleados */}
         <div className="bg-white rounded-2xl border border-amber-200 bg-gradient-to-br from-white to-amber-50/40 p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
@@ -416,11 +433,10 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
             {formatCLP(totalPorPagar)}
           </p>
           <span className="text-[11px] font-medium text-amber-700 mt-1 block">
-            Gastos propios por reembolsar (deuda empresa)
+            Deuda vigente considerando abonos parciales
           </span>
         </div>
 
-        {/* Tarjeta 2: Total Fondos Activos / Por Devolver */}
         <div className="bg-white rounded-2xl border border-sky-200 bg-gradient-to-br from-white to-sky-50/40 p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-sky-800">
@@ -436,7 +452,6 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
           </span>
         </div>
 
-        {/* Tarjeta 3: Total Saldado / Cerrado */}
         <div className="bg-white rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50/40 p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
@@ -453,9 +468,9 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
         </div>
       </section>
 
-      {/* 2. Barra de Acciones Principales y Botón Asignar Fondo */}
+      {/* 2. Barra de Acciones Principales */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 print:hidden">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={() => setModalAsignarOpen(true)}
@@ -483,7 +498,6 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
           </button>
         </div>
 
-        {/* Botón de Exportar Informe PDF */}
         <button
           type="button"
           onClick={() => window.print()}
@@ -497,7 +511,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
         </button>
       </div>
 
-      {/* 3. SECCIÓN EXPANDIBLE: Listado de Fondos Asignados */}
+      {/* 3. SECCIÓN: Listado de Fondos Asignados con Folios Cortos */}
       {mostrarFondos && (
         <section className="bg-white rounded-2xl border border-sky-200 p-5 shadow-sm space-y-4 print:hidden">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -506,7 +520,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
                 Fondos y Viáticos Asignados a Colaboradores
               </h2>
               <p className="text-xs text-slate-500">
-                Monitorea el dinero entregado por adelantado, lo rendido y devoluciones.
+                Haz clic en el Folio o en &ldquo;Ver Cartola&rdquo; para ver la evolución cronológica y abonos.
               </p>
             </div>
             <span className="px-2.5 py-1 rounded-full text-xs font-black bg-sky-100 text-sky-900">
@@ -523,6 +537,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
               <table className="w-full text-left text-xs text-slate-700">
                 <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
                   <tr>
+                    <th className="px-3 py-2.5">Folio</th>
                     <th className="px-3 py-2.5">Fecha</th>
                     <th className="px-3 py-2.5">Colaborador</th>
                     <th className="px-3 py-2.5">Motivo</th>
@@ -531,7 +546,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
                     <th className="px-3 py-2.5 text-right">Saldo Restante</th>
                     <th className="px-3 py-2.5 text-right">Devuelto</th>
                     <th className="px-3 py-2.5 text-center">Estado</th>
-                    <th className="px-3 py-2.5 text-center">Comprobante Devolución</th>
+                    <th className="px-3 py-2.5 text-center">Trazabilidad / Cartola</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -540,9 +555,19 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
                       .filter((g) => g.fondo_id === f.id && g.tipo_rendicion === 'anticipo')
                       .reduce((s, g) => s + g.monto, 0);
                     const saldo = Math.max(0, f.monto_asignado - rendido - (f.monto_devuelto || 0));
+                    const folioFondo = formatFolioFondo(f.correlativo, f.id);
 
                     return (
                       <tr key={f.id} className="hover:bg-slate-50/70">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setCartolaData({ tipo: 'fondo', fondo: f })}
+                            className="font-mono font-black text-xs text-sky-600 hover:text-sky-800 underline bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-200"
+                          >
+                            {folioFondo}
+                          </button>
+                        </td>
                         <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">
                           {formatDate(f.created_at)}
                         </td>
@@ -578,19 +603,13 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                          {f.comprobante_devolucion_url ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleVerFoto(f.comprobante_devolucion_url!, `Devolución - ${f.nombre_empleado}`)
-                              }
-                              className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold hover:bg-emerald-100 shadow-sm"
-                            >
-                              Ver Transferencia
-                            </button>
-                          ) : (
-                            <span className="text-slate-400 text-[11px]">-</span>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCartolaData({ tipo: 'fondo', fondo: f })}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-800 border border-sky-200 text-[11px] font-bold hover:bg-sky-100 shadow-sm"
+                          >
+                            Ver Cartola
+                          </button>
                         </td>
                       </tr>
                     );
@@ -639,7 +658,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
         </div>
       </section>
 
-      {/* 5. Barra de Filtros Avanzados (con nuevo filtro por Estado) */}
+      {/* 5. Barra de Filtros Avanzados */}
       <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-4 print:hidden">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
           <div>
@@ -662,7 +681,6 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Filtro Rango Temporal */}
           <div>
             <label htmlFor="filtro-fecha" className="block text-xs font-bold text-slate-700 mb-1">
               Período / Rango Temporal
@@ -693,7 +711,6 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
             )}
           </div>
 
-          {/* Filtro Estado */}
           <div>
             <label htmlFor="filtro-estado" className="block text-xs font-bold text-slate-700 mb-1">
               Estado Contable
@@ -711,7 +728,6 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
             </select>
           </div>
 
-          {/* Filtro Área */}
           <div>
             <label htmlFor="filtro-area" className="block text-xs font-bold text-slate-700 mb-1">
               Área de la Empresa
@@ -731,7 +747,6 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
             </select>
           </div>
 
-          {/* Filtro Usuario */}
           <div>
             <label htmlFor="filtro-usuario" className="block text-xs font-bold text-slate-700 mb-1">
               Colaborador
@@ -751,7 +766,6 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
             </select>
           </div>
 
-          {/* Filtro Categoría */}
           <div>
             <label htmlFor="filtro-categoria" className="block text-xs font-bold text-slate-700 mb-1">
               Categoría
@@ -773,7 +787,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
         </div>
       </section>
 
-      {/* 6. TABLA Y TARJETAS DE RENDICIONES CON ACCIÓN DE NIVELACIÓN */}
+      {/* 6. TABLA CON FOLIOS CORTOS Y CARTOLA */}
       <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm print:border-none print:shadow-none">
         <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden">
           <div>
@@ -795,151 +809,170 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
           </div>
         ) : (
           <>
-            {/* Tabla para Escritorio y Formato Impreso */}
+            {/* Tabla Escritorio & Print */}
             <div className="overflow-x-auto print:block">
               <table className="w-full text-left text-sm text-slate-700 print:text-xs print:border print:border-slate-300">
                 <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 print:bg-slate-100 print:text-black">
                   <tr>
-                    <th scope="col" className="px-4 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
+                      Folio
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
                       Fecha / Hora
                     </th>
-                    <th scope="col" className="px-4 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
                       Colaborador
                     </th>
-                    <th scope="col" className="px-4 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
                       Área
                     </th>
-                    <th scope="col" className="px-4 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
                       Modalidad
                     </th>
-                    <th scope="col" className="px-4 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
                       Categoría
                     </th>
-                    <th scope="col" className="px-4 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
                       N° Comprobante
                     </th>
-                    <th scope="col" className="px-4 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
                       Estado
                     </th>
-                    <th scope="col" className="px-4 py-3.5 text-right print:px-2 print:py-2">
+                    <th scope="col" className="px-3 py-3.5 text-right print:px-2 print:py-2">
                       Monto
                     </th>
-                    <th scope="col" className="px-4 py-3.5 text-center print:hidden">
-                      Acciones
+                    <th scope="col" className="px-3 py-3.5 text-center print:hidden">
+                      Trazabilidad & Acciones
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 print:divide-slate-200">
-                  {filteredGastos.map((gasto) => (
-                    <tr
-                      key={gasto.id}
-                      className="hover:bg-slate-50/70 transition-colors print:bg-transparent"
-                    >
-                      <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap print:px-2 print:py-1.5 print:text-slate-800">
-                        {formatDate(gasto.created_at)}
-                      </td>
-                      <td className="px-4 py-3 print:px-2 print:py-1.5">
-                        <span className="font-bold text-slate-900 block leading-tight">
-                          {gasto.nombre_empleado}
-                        </span>
-                        <span className="text-[11px] text-slate-400 block print:text-slate-600">
-                          {gasto.email_empleado}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs font-medium text-slate-600 whitespace-nowrap print:px-2 print:py-1.5 print:text-slate-800">
-                        {gasto.area_empleado}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap print:px-2 print:py-1.5">
-                        {gasto.tipo_rendicion === 'anticipo' ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200 print:border-none">
-                            Anticipo
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-50 text-amber-800 border border-amber-200 print:border-none">
-                            Reembolso
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap print:px-2 print:py-1.5">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-bold border ${getCategoriaBadgeClass(
-                            gasto.categoria
-                          )} print:border-none`}
-                        >
-                          {gasto.categoria}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-800 whitespace-nowrap print:px-2 print:py-1.5">
-                        #{gasto.numero_comprobante}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap print:px-2 print:py-1.5">
-                        {gasto.estado === 'por_pagar' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-200">
-                            Por Pagar
-                          </span>
-                        )}
-                        {gasto.estado === 'aplicado_a_fondo' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-200">
-                            Aplicado a Fondo
-                          </span>
-                        )}
-                        {gasto.estado === 'cerrado' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-800 border border-slate-200">
-                            Cerrado
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-black text-slate-900 text-right whitespace-nowrap text-sm print:text-xs print:px-2 print:py-1.5">
-                        {formatCLP(gasto.monto)}
-                      </td>
-                      <td className="px-4 py-3 text-center whitespace-nowrap print:hidden">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* Ver Boleta */}
+                  {filteredGastos.map((gasto) => {
+                    const folioGasto = formatFolioGasto(gasto.correlativo, gasto.id);
+                    const abonosGasto = abonosPorGasto.get(gasto.id) || [];
+                    const totalAbonado = abonosGasto.reduce((s, a) => s + a.monto_abonado, 0);
+                    const tieneAbonosParciales = totalAbonado > 0 && totalAbonado < gasto.monto;
+
+                    return (
+                      <tr
+                        key={gasto.id}
+                        className="hover:bg-slate-50/70 transition-colors print:bg-transparent"
+                      >
+                        <td className="px-3 py-3 whitespace-nowrap print:px-2 print:py-1.5">
                           <button
                             type="button"
-                            onClick={() =>
-                              handleVerFoto(gasto.foto_url, `Boleta #${gasto.numero_comprobante} - ${gasto.nombre_empleado}`)
-                            }
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-sm transition-colors"
+                            onClick={() => setCartolaData({ tipo: 'gasto', gasto })}
+                            className="font-mono font-black text-xs text-sky-600 hover:text-sky-800 underline bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-200"
                           >
-                            Boleta
+                            {folioGasto}
                           </button>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap print:px-2 print:py-1.5 print:text-slate-800">
+                          {formatDate(gasto.created_at)}
+                        </td>
+                        <td className="px-3 py-3 print:px-2 print:py-1.5">
+                          <span className="font-bold text-slate-900 block leading-tight">
+                            {gasto.nombre_empleado}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block print:text-slate-600">
+                            {gasto.email_empleado}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-xs font-medium text-slate-600 whitespace-nowrap print:px-2 print:py-1.5 print:text-slate-800">
+                          {gasto.area_empleado}
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap print:px-2 print:py-1.5">
+                          {gasto.tipo_rendicion === 'anticipo' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200 print:border-none">
+                              Anticipo
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-50 text-amber-800 border border-amber-200 print:border-none">
+                              Reembolso
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap print:px-2 print:py-1.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-xs font-bold border ${getCategoriaBadgeClass(
+                              gasto.categoria
+                            )} print:border-none`}
+                          >
+                            {gasto.categoria}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 font-mono text-xs font-semibold text-slate-800 whitespace-nowrap print:px-2 print:py-1.5">
+                          #{gasto.numero_comprobante}
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap print:px-2 print:py-1.5">
+                          {gasto.estado === 'por_pagar' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-200">
+                              Por Pagar
+                            </span>
+                          )}
+                          {gasto.estado === 'aplicado_a_fondo' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-200">
+                              Aplicado a Fondo
+                            </span>
+                          )}
+                          {gasto.estado === 'cerrado' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-800 border border-slate-200">
+                              Cerrado
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 font-black text-slate-900 text-right whitespace-nowrap text-sm print:text-xs print:px-2 print:py-1.5">
+                          <div>{formatCLP(gasto.monto)}</div>
+                          {tieneAbonosParciales && (
+                            <div className="text-[10px] font-bold text-amber-700">
+                              Pend: {formatCLP(gasto.monto - totalAbonado)}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-center whitespace-nowrap print:hidden">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {/* Ver Cartola / Detalle */}
+                            <button
+                              type="button"
+                              onClick={() => setCartolaData({ tipo: 'gasto', gasto })}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-xs shadow-sm transition-colors"
+                            >
+                              Ver Cartola
+                            </button>
 
-                          {/* Ver Comprobante de Pago Subido por Admin */}
-                          {gasto.comprobante_pago_url && (
+                            {/* Ver Boleta */}
                             <button
                               type="button"
                               onClick={() =>
-                                handleVerFoto(gasto.comprobante_pago_url!, `Comprobante de Reembolso #${gasto.numero_comprobante}`)
+                                handleVerFoto(gasto.foto_url, `Boleta #${gasto.numero_comprobante} - ${gasto.nombre_empleado}`)
                               }
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs shadow-sm transition-colors"
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-sm transition-colors"
                             >
-                              Ver Pago
+                              Boleta
                             </button>
-                          )}
 
-                          {/* Botón Pagar / Reembolsar (Nivelación) */}
-                          {gasto.tipo_rendicion === 'reembolso' && gasto.estado === 'por_pagar' && (
-                            <button
-                              type="button"
-                              onClick={() => setGastoToReembolsar(gasto)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-sm transition-colors"
-                            >
-                              Pagar / Reembolsar
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {/* Pagar / Reembolsar rápido */}
+                            {gasto.tipo_rendicion === 'reembolso' && gasto.estado === 'por_pagar' && (
+                              <button
+                                type="button"
+                                onClick={() => setGastoToReembolsar(gasto)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-sm transition-colors"
+                              >
+                                Pagar
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
-                {/* Fila de Totales */}
                 <tfoot className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300">
                   <tr>
-                    <td colSpan={7} className="px-4 py-3 text-left text-xs uppercase tracking-wider print:px-2 print:py-1.5">
+                    <td colSpan={8} className="px-3 py-3 text-left text-xs uppercase tracking-wider print:px-2 print:py-1.5">
                       Total Consolidado ({filteredGastos.length} comprobantes)
                     </td>
-                    <td className="px-4 py-3 text-right text-base print:text-xs print:px-2 print:py-1.5 text-slate-900">
+                    <td className="px-3 py-3 text-right text-base print:text-xs print:px-2 print:py-1.5 text-slate-900">
                       {formatCLP(totalRendido)}
                     </td>
                     <td className="print:hidden"></td>
@@ -948,94 +981,109 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
               </table>
             </div>
 
-            {/* Vista Móvil: Tarjetas apiladas */}
+            {/* Vista Móvil */}
             <div className="md:hidden divide-y divide-slate-100 p-3 space-y-3 print:hidden">
-              {filteredGastos.map((gasto) => (
-                <div
-                  key={gasto.id}
-                  className="bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 space-y-2.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${getCategoriaBadgeClass(
-                        gasto.categoria
-                      )}`}
-                    >
-                      {gasto.categoria}
-                    </span>
-                    <span className="font-mono text-xs font-bold text-slate-600">
-                      Doc: #{gasto.numero_comprobante}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    {gasto.tipo_rendicion === 'anticipo' ? (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        Anticipo
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-amber-50 text-amber-800 border border-amber-200">
-                        Reembolso
-                      </span>
-                    )}
-
-                    {gasto.estado === 'por_pagar' && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-200">
-                        Por Pagar
-                      </span>
-                    )}
-                    {gasto.estado === 'aplicado_a_fondo' && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-200">
-                        Aplicado a Fondo
-                      </span>
-                    )}
-                    {gasto.estado === 'cerrado' && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-100 text-slate-800 border border-slate-200">
-                        Cerrado
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex justify-between items-baseline">
-                    <div>
-                      <p className="text-sm font-black text-slate-900 leading-tight">
-                        {gasto.nombre_empleado}
-                      </p>
-                      <p className="text-xs text-slate-500 font-medium">
-                        {gasto.area_empleado}
-                      </p>
-                    </div>
-                    <p className="text-lg font-black text-slate-900">
-                      {formatCLP(gasto.monto)}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs text-slate-400">
-                    <span>{formatDate(gasto.created_at)}</span>
-                    <div className="flex items-center gap-1.5">
+              {filteredGastos.map((gasto) => {
+                const folioGasto = formatFolioGasto(gasto.correlativo, gasto.id);
+                return (
+                  <div
+                    key={gasto.id}
+                    className="bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between">
                       <button
                         type="button"
-                        onClick={() =>
-                          handleVerFoto(gasto.foto_url, `Boleta #${gasto.numero_comprobante} - ${gasto.nombre_empleado}`)
-                        }
-                        className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 font-bold shadow-sm"
+                        onClick={() => setCartolaData({ tipo: 'gasto', gasto })}
+                        className="font-mono font-black text-xs text-sky-700 bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-200"
                       >
-                        Boleta
+                        {folioGasto}
                       </button>
+                      <span className="font-mono text-xs font-bold text-slate-600">
+                        Doc: #{gasto.numero_comprobante}
+                      </span>
+                    </div>
 
-                      {gasto.tipo_rendicion === 'reembolso' && gasto.estado === 'por_pagar' && (
-                        <button
-                          type="button"
-                          onClick={() => setGastoToReembolsar(gasto)}
-                          className="px-3 py-1 rounded-lg bg-emerald-600 text-white font-black shadow-sm"
-                        >
-                          Pagar
-                        </button>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${getCategoriaBadgeClass(
+                          gasto.categoria
+                        )}`}
+                      >
+                        {gasto.categoria}
+                      </span>
+                      {gasto.tipo_rendicion === 'anticipo' ? (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          Anticipo
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-amber-50 text-amber-800 border border-amber-200">
+                          Reembolso
+                        </span>
+                      )}
+                      {gasto.estado === 'por_pagar' && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-200">
+                          Por Pagar
+                        </span>
+                      )}
+                      {gasto.estado === 'aplicado_a_fondo' && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-200">
+                          Aplicado
+                        </span>
+                      )}
+                      {gasto.estado === 'cerrado' && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-100 text-slate-800 border border-slate-200">
+                          Cerrado
+                        </span>
                       )}
                     </div>
+
+                    <div className="flex justify-between items-baseline">
+                      <div>
+                        <p className="text-sm font-black text-slate-900 leading-tight">
+                          {gasto.nombre_empleado}
+                        </p>
+                        <p className="text-xs text-slate-500 font-medium">
+                          {gasto.area_empleado}
+                        </p>
+                      </div>
+                      <p className="text-lg font-black text-slate-900">
+                        {formatCLP(gasto.monto)}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs text-slate-400">
+                      <span>{formatDate(gasto.created_at)}</span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setCartolaData({ tipo: 'gasto', gasto })}
+                          className="px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-300 text-sky-800 font-bold"
+                        >
+                          Cartola
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleVerFoto(gasto.foto_url, `Boleta #${gasto.numero_comprobante} - ${gasto.nombre_empleado}`)
+                          }
+                          className="px-2 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 font-bold"
+                        >
+                          Boleta
+                        </button>
+                        {gasto.tipo_rendicion === 'reembolso' && gasto.estado === 'por_pagar' && (
+                          <button
+                            type="button"
+                            onClick={() => setGastoToReembolsar(gasto)}
+                            className="px-3 py-1 rounded-lg bg-emerald-600 text-white font-black"
+                          >
+                            Pagar
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
@@ -1057,7 +1105,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
                   Asignar Fondo / Viático
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Entrega dinero previo (caja chica / viático de terreno) a un colaborador.
+                  Entrega dinero previo a un colaborador. Se generará folio correlativo.
                 </p>
               </div>
               <button
@@ -1146,7 +1194,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
         </div>
       )}
 
-      {/* 8. MODAL PAGAR / REEMBOLSAR (NIVELACIÓN Y CIERRE) */}
+      {/* 8. MODAL PAGAR / REEMBOLSAR RÁPIDO */}
       {gastoToReembolsar && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
@@ -1162,7 +1210,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
                   Reembolsar Gasto Propio
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Registra la transferencia bancaria y cierra la rendición.
+                  Folio: <strong>{formatFolioGasto(gastoToReembolsar.correlativo, gastoToReembolsar.id)}</strong>
                 </p>
               </div>
               <button
@@ -1190,7 +1238,7 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
                 <strong className="text-slate-900">#{gastoToReembolsar.numero_comprobante} ({gastoToReembolsar.categoria})</strong>
               </div>
               <div className="flex justify-between pt-1 border-t border-slate-200 text-sm">
-                <span className="font-bold text-slate-800">Monto a Transferir:</span>
+                <span className="font-bold text-slate-800">Monto Total:</span>
                 <strong className="font-black text-emerald-700">{formatCLP(gastoToReembolsar.monto)}</strong>
               </div>
             </div>
@@ -1209,9 +1257,6 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
                   required
                   className="w-full text-xs text-slate-500 file:mr-2 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-800 hover:file:bg-emerald-100"
                 />
-                <span className="text-[10px] text-slate-400 block mt-1">
-                  Sube la captura de la transferencia realizada desde la cuenta de la empresa.
-                </span>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -1235,7 +1280,25 @@ export default function PanelAdmin({ gastos, profiles, fondos = [] }: PanelAdmin
         </div>
       )}
 
-      {/* 9. MODAL VISOR DE FOTOGRAFÍAS */}
+      {/* 9. MODAL CARTOLA / DETALLE (HISTORIAL DE EVOLUCIÓN Y TRAZABILIDAD) */}
+      {cartolaData && (
+        <ModalCartolaDetalle
+          tipo={cartolaData.tipo}
+          gasto={cartolaData.gasto}
+          fondo={cartolaData.fondo}
+          abonos={cartolaData.gasto ? abonosPorGasto.get(cartolaData.gasto.id) || [] : []}
+          gastosVinculados={
+            cartolaData.fondo
+              ? gastos.filter((g) => g.fondo_id === cartolaData.fondo!.id && g.tipo_rendicion === 'anticipo')
+              : []
+          }
+          isAdmin={true}
+          onClose={() => setCartolaData(null)}
+          onVerFoto={handleVerFoto}
+        />
+      )}
+
+      {/* 10. MODAL VISOR DE FOTOGRAFÍAS */}
       {modalTitle && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 print:hidden"

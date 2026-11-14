@@ -103,6 +103,7 @@ Extensión del usuario autenticado en `auth.users`:
 #### Tabla `fondos_asignados`
 Registro de anticipos / viáticos entregados previamente por la empresa:
 - `id`: `UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `correlativo`: `SERIAL` (correlativo numérico para generación de folios cortos `#F-001`)
 - `user_id`: `UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE`
 - `admin_id`: `UUID REFERENCES profiles(id) ON DELETE SET NULL`
 - `motivo`: `TEXT NOT NULL`
@@ -115,6 +116,7 @@ Registro de anticipos / viáticos entregados previamente por la empresa:
 #### Tabla `gastos`
 Registro individual de rendición de gastos:
 - `id`: `UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `correlativo`: `SERIAL` (correlativo numérico para generación de folios cortos `#G-101`)
 - `user_id`: `UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE`
 - `categoria`: `TEXT NOT NULL CHECK (categoria IN ('Bencina', 'Transporte', 'Comida', 'Materiales', 'Viáticos', 'Otro'))`
 - `numero_comprobante`: `TEXT NOT NULL`
@@ -127,6 +129,16 @@ Registro individual de rendición de gastos:
 - `created_at`: `TIMESTAMPTZ DEFAULT now()`
 - **Constraint de Unicidad:**
   - `CONSTRAINT unique_user_comprobante UNIQUE (user_id, numero_comprobante)` para evitar duplicidad de boletas para un mismo usuario.
+
+#### Tabla `abonos_reembolsos`
+Registro de pagos parciales o abonos realizados por la empresa para cubrir gastos propios:
+- `id`: `UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `gasto_id`: `UUID NOT NULL REFERENCES gastos(id) ON DELETE CASCADE`
+- `admin_id`: `UUID REFERENCES profiles(id) ON DELETE SET NULL`
+- `monto_abonado`: `INTEGER NOT NULL CHECK (monto_abonado > 0)`
+- `comprobante_pago_url`: `TEXT NULL`
+- `notas`: `TEXT NULL`
+- `created_at`: `TIMESTAMPTZ DEFAULT now()`
 
 ### 5.2. Almacenamiento (Supabase Storage)
 - **Bucket:** Privado, denominado `comprobantes`.
@@ -180,3 +192,9 @@ Registro individual de rendición de gastos:
    - Panel de control contable con tarjetas de balance (Por Pagar, Fondos Activos, Total Conciliado).
    - Acción de nivelación administrativa (Pagar / Reembolsar) con respaldo fotográfico de transferencia.
    - Exportación de informes ejecutivos en PDF con filtros de auditoría cruzados.
+
+6. **Fase 6: Folios Cortos, Abonos Parciales y Modal de Cartola / Detalle**
+   - Identificadores legibles automáticos: `#F-001` para fondos/viáticos y `#G-101` para gastos/reembolsos.
+   - Tabla `abonos_reembolsos` para pagos parciales escalonados con comprobante bancario.
+   - Modal de Cartola / Detalle con trazabilidad cronológica completa para empleados y administradores.
+   - Acciones rápidas administrativas de abono y cierre definitivo desde la cartola.

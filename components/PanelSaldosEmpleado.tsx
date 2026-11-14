@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useActionState } from 'react';
 import { devolverSobrante, type FormState } from '@/app/rendiciones/actions';
+import { formatFolioFondo } from '@/lib/folios';
+import ModalCartolaDetalle, { type GastoDetalleItem } from '@/components/ModalCartolaDetalle';
 
 // Compresión nativa en navegador para fotos de comprobante de devolución
 function compressImage(file: File): Promise<File> {
@@ -67,24 +69,35 @@ function compressImage(file: File): Promise<File> {
 
 export interface FondoAsignadoActivo {
   id: string;
+  correlativo?: number | null;
   motivo: string;
   monto_asignado: number;
   total_rendido: number;
   saldo_restante: number;
   monto_devuelto: number;
   estado: string;
+  comprobante_devolucion_url?: string | null;
+  signedDevolucionUrl?: string | null;
+  created_at?: string;
 }
 
 interface PanelSaldosEmpleadoProps {
   fondoActivo: FondoAsignadoActivo | null;
   totalReembolsosPendientes: number;
+  gastosVinculados?: GastoDetalleItem[];
+  nombreUsuario?: string;
+  areaUsuario?: string;
 }
 
 export default function PanelSaldosEmpleado({
   fondoActivo,
   totalReembolsosPendientes,
+  gastosVinculados = [],
+  nombreUsuario = 'Colaborador',
+  areaUsuario = 'Terreno',
 }: PanelSaldosEmpleadoProps) {
   const [modalDevolucionOpen, setModalDevolucionOpen] = useState(false);
+  const [modalCartolaOpen, setModalCartolaOpen] = useState(false);
   const [montoDevolver, setMontoDevolver] = useState<number>(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -143,6 +156,10 @@ export default function PanelSaldosEmpleado({
     formAction(formData);
   };
 
+  const folioFondo = fondoActivo
+    ? formatFolioFondo(fondoActivo.correlativo, fondoActivo.id)
+    : '';
+
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -150,9 +167,16 @@ export default function PanelSaldosEmpleado({
         <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm relative overflow-hidden flex flex-col justify-between">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-                Fondo Asignado (Anticipo)
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                  Fondo Asignado
+                </span>
+                {fondoActivo && (
+                  <span className="font-mono font-black text-[10px] text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200">
+                    {folioFondo}
+                  </span>
+                )}
+              </div>
               <h3 className="text-sm font-black text-slate-900 mt-0.5 truncate">
                 {fondoActivo ? fondoActivo.motivo : 'Sin Fondo Activo'}
               </h3>
@@ -197,18 +221,26 @@ export default function PanelSaldosEmpleado({
                 </div>
               </div>
 
-              {fondoActivo.saldo_restante > 0 && (
+              <div className="flex items-center gap-1.5 pt-1">
+                {/* Botón Ver Cartola del Fondo */}
                 <button
                   type="button"
-                  onClick={() => setModalDevolucionOpen(true)}
-                  className="w-full py-2 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-black transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                  onClick={() => setModalCartolaOpen(true)}
+                  className="flex-1 py-2 px-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-300 text-sky-900 text-xs font-bold transition-colors text-center shadow-sm"
                 >
-                  <svg className="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                  </svg>
-                  Devolver Sobrante y Cerrar Fondo
+                  Ver Cartola
                 </button>
-              )}
+
+                {fondoActivo.saldo_restante > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setModalDevolucionOpen(true)}
+                    className="flex-1 py-2 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-black transition-colors flex items-center justify-center gap-1 shadow-sm"
+                  >
+                    Devolver Sobrante
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <p className="text-xs text-slate-400 mt-2">
@@ -246,6 +278,34 @@ export default function PanelSaldosEmpleado({
         </div>
       </div>
 
+      {/* Modal Cartola del Fondo */}
+      {modalCartolaOpen && fondoActivo && (
+        <ModalCartolaDetalle
+          tipo="fondo"
+          fondo={{
+            id: fondoActivo.id,
+            correlativo: fondoActivo.correlativo,
+            motivo: fondoActivo.motivo,
+            monto_asignado: fondoActivo.monto_asignado,
+            estado: fondoActivo.estado as any,
+            monto_devuelto: fondoActivo.monto_devuelto,
+            comprobante_devolucion_url: fondoActivo.comprobante_devolucion_url || null,
+            created_at: fondoActivo.created_at || new Date().toISOString(),
+            user_id: '',
+            nombre_empleado: nombreUsuario,
+            area_empleado: areaUsuario,
+            signedDevolucionUrl: fondoActivo.signedDevolucionUrl || null,
+          }}
+          gastosVinculados={gastosVinculados}
+          isAdmin={false}
+          onClose={() => setModalCartolaOpen(false)}
+          onDevolverSobrante={() => {
+            setModalCartolaOpen(false);
+            setModalDevolucionOpen(true);
+          }}
+        />
+      )}
+
       {/* Modal Devolver Sobrante y Cerrar Fondo */}
       {modalDevolucionOpen && fondoActivo && (
         <div
@@ -262,7 +322,7 @@ export default function PanelSaldosEmpleado({
                   Devolver Sobrante y Conciliar
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Fondo: <strong>{fondoActivo.motivo}</strong>
+                  Fondo {folioFondo}: <strong>{fondoActivo.motivo}</strong>
                 </p>
               </div>
               <button

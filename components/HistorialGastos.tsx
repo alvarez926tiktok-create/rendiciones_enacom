@@ -2,9 +2,13 @@
 
 import { useState, useMemo, useActionState, useEffect, useRef } from 'react';
 import { modificarGasto, eliminarGasto, type FormState } from '@/app/rendiciones/actions';
+import { formatFolioGasto } from '@/lib/folios';
+import ModalCartolaDetalle, { type AbonoItem } from '@/components/ModalCartolaDetalle';
 
 export type GastoItem = {
   id: string;
+  correlativo?: number | null;
+  user_id: string;
   categoria: string;
   numero_comprobante: string;
   monto: number;
@@ -20,6 +24,9 @@ export type GastoItem = {
 
 interface HistorialGastosProps {
   gastos: GastoItem[];
+  abonos?: AbonoItem[];
+  nombreUsuario?: string;
+  areaUsuario?: string;
 }
 
 type PeriodoFiltro = 'todos' | 'hoy' | '7d' | '30d' | 'mes_particular';
@@ -33,10 +40,17 @@ const CATEGORIAS = [
   'Otro',
 ] as const;
 
-export default function HistorialGastos({ gastos }: HistorialGastosProps) {
+export default function HistorialGastos({
+  gastos,
+  abonos = [],
+  nombreUsuario = 'Colaborador',
+  areaUsuario = 'Terreno',
+}: HistorialGastosProps) {
   const [modalFoto, setModalFoto] = useState<string | null>(null);
+  const [modalFotoTitulo, setModalFotoTitulo] = useState<string>('Comprobante de Gasto');
   const [gastoToEdit, setGastoToEdit] = useState<GastoItem | null>(null);
   const [gastoToDelete, setGastoToDelete] = useState<GastoItem | null>(null);
+  const [selectedGastoCartola, setSelectedGastoCartola] = useState<GastoItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -96,6 +110,17 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
         return 'bg-slate-100 text-slate-800 border-slate-200';
     }
   };
+
+  // Mapa de abonos por gasto
+  const abonosPorGasto = useMemo(() => {
+    const mapa = new Map<string, AbonoItem[]>();
+    abonos.forEach((a) => {
+      const arr = mapa.get(a.gasto_id) || [];
+      arr.push(a);
+      mapa.set(a.gasto_id, arr);
+    });
+    return mapa;
+  }, [abonos]);
 
   // Filtrado de gastos según el período seleccionado
   const filteredGastos = useMemo(() => {
@@ -160,7 +185,7 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
             Mis Rendiciones Enviadas
           </h2>
           <p className="text-xs text-slate-500">
-            Consulta, modifica o elimina tus gastos en terreno.
+            Toca el Folio o &ldquo;Ver Cartola&rdquo; para ver la evolución y abonos.
           </p>
         </div>
         <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
@@ -181,7 +206,7 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
         </div>
       )}
 
-      {/* Selector de Período (Pills Mobile-First) */}
+      {/* Selector de Período */}
       <div className="space-y-2">
         <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
           Filtrar Período
@@ -284,116 +309,138 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredGastos.map((gasto) => (
-            <div
-              key={gasto.id}
-              className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors space-y-2.5"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span
-                    className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${getCategoriaBadgeClass(
-                      gasto.categoria
-                    )}`}
-                  >
-                    {gasto.categoria}
-                  </span>
-                  <span className="text-xs font-semibold text-slate-600">
-                    Doc: #{gasto.numero_comprobante}
-                  </span>
+          {filteredGastos.map((gasto) => {
+            const folioGasto = formatFolioGasto(gasto.correlativo, gasto.id);
+            const abonosGasto = abonosPorGasto.get(gasto.id) || [];
+            const totalAbonado = abonosGasto.reduce((s, a) => s + a.monto_abonado, 0);
+            const tieneAbonosParciales = totalAbonado > 0 && totalAbonado < gasto.monto;
+
+            return (
+              <div
+                key={gasto.id}
+                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors space-y-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGastoCartola(gasto)}
+                      className="font-mono font-black text-xs text-sky-700 bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-200 hover:bg-sky-100"
+                    >
+                      {folioGasto}
+                    </button>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${getCategoriaBadgeClass(
+                        gasto.categoria
+                      )}`}
+                    >
+                      {gasto.categoria}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-600">
+                      Doc: #{gasto.numero_comprobante}
+                    </span>
+                  </div>
+
+                  <div className="text-right">
+                    <p className="text-base font-black text-slate-900 leading-tight">
+                      {formatCLP(gasto.monto)}
+                    </p>
+                    {tieneAbonosParciales && (
+                      <span className="text-[10px] font-bold text-amber-700 block">
+                        Pendiente: {formatCLP(gasto.monto - totalAbonado)}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <p className="text-base font-black text-slate-900">
-                  {formatCLP(gasto.monto)}
-                </p>
-              </div>
-
-              {/* Badges de Modalidad y Estado Contable */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {gasto.tipo_rendicion === 'anticipo' ? (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
-                    Anticipo / Fondo
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
-                    Reembolso Propio
-                  </span>
-                )}
-
-                {gasto.estado === 'aplicado_a_fondo' && (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    ✓ Aplicado a Fondo
-                  </span>
-                )}
-                {gasto.estado === 'por_pagar' && (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-50 text-yellow-800 border border-yellow-200">
-                    ⏳ Pendiente de Pago
-                  </span>
-                )}
-                {gasto.estado === 'cerrado' && (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
-                    ✓ Cerrado / Reembolsado
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs">
-                <span className="text-slate-400 text-[11px]">{formatDate(gasto.created_at)}</span>
-
+                {/* Badges de Modalidad y Estado Contable */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {/* Ver Boleta */}
-                  {gasto.signedUrl && (
-                    <button
-                      type="button"
-                      onClick={() => setModalFoto(gasto.signedUrl!)}
-                      className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:text-sky-600 text-xs font-bold shadow-sm"
-                    >
-                      Ver Foto
-                    </button>
+                  {gasto.tipo_rendicion === 'anticipo' ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      Anticipo / Fondo
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
+                      Reembolso Propio
+                    </span>
                   )}
 
-                  {/* Ver Comprobante de Pago de la Empresa (si fue reembolsado) */}
-                  {gasto.signedPagoUrl && (
-                    <button
-                      type="button"
-                      onClick={() => setModalFoto(gasto.signedPagoUrl!)}
-                      className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-800 hover:bg-emerald-100 text-xs font-bold shadow-sm"
-                    >
-                      Ver Pago
-                    </button>
+                  {gasto.estado === 'aplicado_a_fondo' && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      ✓ Aplicado a Fondo
+                    </span>
                   )}
-
-                  {/* Editar (solo si no está cerrado) */}
-                  {gasto.estado !== 'cerrado' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActionFeedback(null);
-                        setGastoToEdit(gasto);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:text-amber-600 text-xs font-bold shadow-sm"
-                    >
-                      Editar
-                    </button>
+                  {gasto.estado === 'por_pagar' && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-50 text-yellow-800 border border-yellow-200">
+                      ⏳ Por Pagar {tieneAbonosParciales ? '(Con Abonos)' : ''}
+                    </span>
                   )}
-
-                  {/* Eliminar (solo si no está cerrado) */}
-                  {gasto.estado !== 'cerrado' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActionFeedback(null);
-                        setGastoToDelete(gasto);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold shadow-sm"
-                    >
-                      Eliminar
-                    </button>
+                  {gasto.estado === 'cerrado' && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
+                      ✓ Cerrado / Reembolsado
+                    </span>
                   )}
                 </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs">
+                  <span className="text-slate-400 text-[11px]">{formatDate(gasto.created_at)}</span>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Botón Ver Cartola */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGastoCartola(gasto)}
+                      className="px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-300 text-sky-800 hover:bg-sky-100 text-xs font-bold shadow-sm"
+                    >
+                      Ver Cartola
+                    </button>
+
+                    {/* Ver Boleta */}
+                    {gasto.signedUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalFotoTitulo(`Boleta #${gasto.numero_comprobante}`);
+                          setModalFoto(gasto.signedUrl!);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:text-sky-600 text-xs font-bold shadow-sm"
+                      >
+                        Foto Boleta
+                      </button>
+                    )}
+
+                    {/* Editar (solo si no está cerrado) */}
+                    {gasto.estado !== 'cerrado' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActionFeedback(null);
+                          setGastoToEdit(gasto);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:text-amber-600 text-xs font-bold shadow-sm"
+                      >
+                        Editar
+                      </button>
+                    )}
+
+                    {/* Eliminar (solo si no está cerrado) */}
+                    {gasto.estado !== 'cerrado' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActionFeedback(null);
+                          setGastoToDelete(gasto);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold shadow-sm"
+                      >
+                        Eliminar
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -408,7 +455,7 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-2 text-white">
-              <span className="text-xs font-semibold">Comprobante de Gasto</span>
+              <span className="text-xs font-semibold">{modalFotoTitulo}</span>
               <button
                 type="button"
                 onClick={() => setModalFoto(null)}
@@ -426,6 +473,25 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Cartola / Detalle de Gasto para Empleado */}
+      {selectedGastoCartola && (
+        <ModalCartolaDetalle
+          tipo="gasto"
+          gasto={{
+            ...selectedGastoCartola,
+            nombre_empleado: nombreUsuario,
+            area_empleado: areaUsuario,
+          }}
+          abonos={abonosPorGasto.get(selectedGastoCartola.id) || []}
+          isAdmin={false}
+          onClose={() => setSelectedGastoCartola(null)}
+          onVerFoto={(url, titulo) => {
+            setModalFotoTitulo(titulo);
+            setModalFoto(url);
+          }}
+        />
       )}
 
       {/* Modal para Editar Rendición */}

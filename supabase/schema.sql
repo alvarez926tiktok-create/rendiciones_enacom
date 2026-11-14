@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- 2. TABLA: fondos_asignados
 CREATE TABLE IF NOT EXISTS public.fondos_asignados (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  correlativo SERIAL,
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   admin_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   motivo TEXT NOT NULL,
@@ -36,10 +37,12 @@ CREATE TABLE IF NOT EXISTS public.fondos_asignados (
 
 CREATE INDEX IF NOT EXISTS idx_fondos_user_id ON public.fondos_asignados(user_id);
 CREATE INDEX IF NOT EXISTS idx_fondos_estado ON public.fondos_asignados(estado);
+CREATE INDEX IF NOT EXISTS idx_fondos_correlativo ON public.fondos_asignados(correlativo);
 
 -- 3. TABLA: gastos
 CREATE TABLE IF NOT EXISTS public.gastos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  correlativo SERIAL,
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   categoria TEXT NOT NULL CHECK (categoria IN (
     'Bencina',
@@ -66,6 +69,21 @@ CREATE INDEX IF NOT EXISTS idx_gastos_created_at ON public.gastos(created_at DES
 CREATE INDEX IF NOT EXISTS idx_gastos_fondo_id ON public.gastos(fondo_id);
 CREATE INDEX IF NOT EXISTS idx_gastos_estado ON public.gastos(estado);
 CREATE INDEX IF NOT EXISTS idx_gastos_tipo ON public.gastos(tipo_rendicion);
+CREATE INDEX IF NOT EXISTS idx_gastos_correlativo ON public.gastos(correlativo);
+
+-- 4. TABLA: abonos_reembolsos (Pagos parciales de la empresa)
+CREATE TABLE IF NOT EXISTS public.abonos_reembolsos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  gasto_id UUID NOT NULL REFERENCES public.gastos(id) ON DELETE CASCADE,
+  admin_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  monto_abonado INTEGER NOT NULL CHECK (monto_abonado > 0),
+  comprobante_pago_url TEXT,
+  notas TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_abonos_gasto_id ON public.abonos_reembolsos(gasto_id);
+CREATE INDEX IF NOT EXISTS idx_abonos_created_at ON public.abonos_reembolsos(created_at);
 
 -- ==============================================================================
 -- 3. FUNCIONES AUXILIARES DE SEGURIDAD (SECURITY DEFINER)

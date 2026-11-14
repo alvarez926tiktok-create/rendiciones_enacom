@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { signOut } from '@/app/auth/actions';
 import AdminViewContainer from '@/components/AdminViewContainer';
 import { type GastoAdminItem, type ProfileItem, type FondoAdminItem } from '@/components/PanelAdmin';
+import { type AbonoItem } from '@/components/ModalCartolaDetalle';
 
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
@@ -54,11 +55,32 @@ export default async function AdminDashboardPage() {
     console.error('Error al cargar fondos asignados admin:', fondosError);
   }
 
-  // 5. Mapear datos consolidados con la información de cada colaborador
+  // 5. Obtener todos los abonos a reembolsos
+  const { data: abonosData, error: abonosError } = await supabase
+    .from('abonos_reembolsos')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  if (abonosError) {
+    console.warn('Abonos no disponibles aún (se requerirá migración):', abonosError.message);
+  }
+
+  const abonos: AbonoItem[] = (abonosData || []).map((a) => ({
+    id: a.id,
+    gasto_id: a.gasto_id,
+    admin_id: a.admin_id,
+    monto_abonado: a.monto_abonado,
+    comprobante_pago_url: a.comprobante_pago_url,
+    notas: a.notas,
+    created_at: a.created_at,
+  }));
+
+  // 6. Mapear datos consolidados con la información de cada colaborador y correlativos
   const gastosConsolidados: GastoAdminItem[] = (gastosData || []).map((g) => {
     const userProfile = profileMap.get(g.user_id);
     return {
       id: g.id,
+      correlativo: g.correlativo || null,
       user_id: g.user_id,
       categoria: g.categoria,
       numero_comprobante: g.numero_comprobante,
@@ -79,6 +101,7 @@ export default async function AdminDashboardPage() {
     const userProfile = profileMap.get(f.user_id);
     return {
       id: f.id,
+      correlativo: f.correlativo || null,
       user_id: f.user_id,
       admin_id: f.admin_id,
       motivo: f.motivo,
@@ -134,6 +157,7 @@ export default async function AdminDashboardPage() {
           gastos={gastosConsolidados}
           profiles={profiles}
           fondos={fondosConsolidados}
+          abonos={abonos}
         />
       </main>
     </div>
