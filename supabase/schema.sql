@@ -148,22 +148,25 @@ CREATE POLICY "gastos_insert_policy"
     auth.uid() = user_id
   );
 
--- UPDATE: Bloqueado para empleados (inmutabilidad estricta según SPEC.md). Solo admin si aplica.
+-- UPDATE: Permitido para el propio colaborador (para corregir errores) o el admin
 DROP POLICY IF EXISTS "gastos_update_policy" ON public.gastos;
 CREATE POLICY "gastos_update_policy"
   ON public.gastos FOR UPDATE
   TO authenticated
   USING (
-    public.is_admin()
+    auth.uid() = user_id OR public.is_admin()
+  )
+  WITH CHECK (
+    auth.uid() = user_id OR public.is_admin()
   );
 
--- DELETE: Bloqueado para empleados. Solo admin si aplica.
+-- DELETE: Permitido para el propio colaborador o el admin
 DROP POLICY IF EXISTS "gastos_delete_policy" ON public.gastos;
 CREATE POLICY "gastos_delete_policy"
   ON public.gastos FOR DELETE
   TO authenticated
   USING (
-    public.is_admin()
+    auth.uid() = user_id OR public.is_admin()
   );
 
 -- ==============================================================================

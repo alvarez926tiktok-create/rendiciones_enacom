@@ -45,8 +45,8 @@ Desarrollar una aplicación web **Mobile-First** ultra simple y rápida para la 
   2. **Número de Comprobante:** Texto identificador del comprobante/boleta/factura.
   3. **Monto:** Número entero sin decimales (CLP).
   4. **Foto del Comprobante:** Permite abrir la cámara trasera en dispositivos móviles (`capture="environment"` con `accept="image/*"`).
-48: - **Restricciones:** No puede editar ni eliminar rendiciones ya enviadas.
-- **Filtros Temporales en Historial:** Consulta de rendiciones por períodos ('Todos', 'Hoy / Del día', 'Últimos 7 días', 'Último mes', 'Mes en particular') con tarjeta/banner de total acumulado en el período.
+  - **Modificación y Eliminación:** El colaborador tiene la facultad de **editar** o **eliminar** sus propias rendiciones enviadas en caso de error o boletas duplicadas (rectificar categoría, comprobante, monto o foto, o eliminar el registro y su archivo asociado).
+  - **Filtros Temporales en Historial:** Consulta de rendiciones por períodos ('Todos', 'Hoy / Del día', 'Últimos 7 días', 'Último mes', 'Mes en particular') con tarjeta/banner de total acumulado en el período.
 
 ### 4.2. Rol `admin`
 - **Experiencia de Usuario:**
@@ -112,8 +112,8 @@ Registro individual de rendición de gastos:
 - **Tabla `gastos`:**
   - Empleados pueden insertar únicamente registros propios (`auth.uid() = user_id`).
   - Empleados pueden consultar únicamente sus propias rendiciones (`auth.uid() = user_id`).
-  - Empleados **no tienen permisos** de `UPDATE` ni `DELETE`.
-  - Administradores tienen permisos de lectura completa (`SELECT`) sobre todos los registros.
+  - Empleados pueden modificar (`UPDATE`) y eliminar (`DELETE`) únicamente sus propias rendiciones (`auth.uid() = user_id`).
+  - Administradores tienen permisos completos de lectura, modificación y eliminación sobre todos los registros.
 - **Storage `comprobantes`:**
   - Subida (`INSERT`): Restringida al usuario autenticado dentro de su propio prefijo `{user_id}`.
   - Lectura (`SELECT`): El empleado accede a sus comprobantes; el administrador tiene acceso a todos los comprobantes.

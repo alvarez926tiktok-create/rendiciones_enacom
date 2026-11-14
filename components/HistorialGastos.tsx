@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useActionState, useEffect, useRef } from 'react';
+import { modificarGasto, eliminarGasto, type FormState } from '@/app/rendiciones/actions';
 
 export type GastoItem = {
   id: string;
@@ -18,12 +19,42 @@ interface HistorialGastosProps {
 
 type PeriodoFiltro = 'todos' | 'hoy' | '7d' | '30d' | 'mes_particular';
 
+const CATEGORIAS = [
+  'Bencina',
+  'Transporte',
+  'Comida',
+  'Materiales',
+  'Viáticos',
+  'Otro',
+] as const;
+
 export default function HistorialGastos({ gastos }: HistorialGastosProps) {
   const [modalFoto, setModalFoto] = useState<string | null>(null);
+  const [gastoToEdit, setGastoToEdit] = useState<GastoItem | null>(null);
+  const [gastoToDelete, setGastoToDelete] = useState<GastoItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const [periodo, setPeriodo] = useState<PeriodoFiltro>('todos');
   const [mesParticular, setMesParticular] = useState<string>(() => {
     return new Date().toISOString().slice(0, 7);
   });
+
+  // Estado para la edición
+  const [editState, editAction, isEditing] = useActionState<FormState | null, FormData>(
+    modificarGasto,
+    null
+  );
+  const editFormRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (editState?.success) {
+      setActionFeedback({ type: 'success', message: editState.message || 'Rendición actualizada con éxito.' });
+      setGastoToEdit(null);
+    } else if (editState?.error) {
+      setActionFeedback({ type: 'error', message: editState.error });
+    }
+  }, [editState]);
 
   const formatCLP = (amount: number) => {
     return new Intl.NumberFormat('es-CL', {
@@ -98,6 +129,23 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
     return filteredGastos.reduce((sum, g) => sum + g.monto, 0);
   }, [filteredGastos]);
 
+  // Manejo de eliminación
+  const handleConfirmDelete = async () => {
+    if (!gastoToDelete) return;
+    setIsDeleting(true);
+    setActionFeedback(null);
+
+    const res = await eliminarGasto(gastoToDelete.id);
+    setIsDeleting(false);
+    setGastoToDelete(null);
+
+    if (res.success) {
+      setActionFeedback({ type: 'success', message: res.message || 'Rendición eliminada con éxito.' });
+    } else {
+      setActionFeedback({ type: 'error', message: res.error || 'No se pudo eliminar la rendición.' });
+    }
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
       {/* Título */}
@@ -107,13 +155,26 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
             Mis Rendiciones Enviadas
           </h2>
           <p className="text-xs text-slate-500">
-            Consulta tus gastos por fecha y período.
+            Consulta, modifica o elimina tus gastos en terreno.
           </p>
         </div>
         <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
           {filteredGastos.length} {filteredGastos.length === 1 ? 'doc' : 'docs'}
         </span>
       </div>
+
+      {/* Alertas de acción */}
+      {actionFeedback && (
+        <div
+          className={`p-3 rounded-xl text-xs font-bold border ${
+            actionFeedback.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-red-50 text-red-800 border-red-200'
+          }`}
+        >
+          {actionFeedback.message}
+        </div>
+      )}
 
       {/* Selector de Período (Pills Mobile-First) */}
       <div className="space-y-2">
@@ -221,10 +282,10 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
           {filteredGastos.map((gasto) => (
             <div
               key={gasto.id}
-              className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors flex items-center justify-between gap-3"
+              className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors space-y-2.5"
             >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span
                     className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${getCategoriaBadgeClass(
                       gasto.categoria
@@ -236,48 +297,58 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
                     Doc: #{gasto.numero_comprobante}
                   </span>
                 </div>
+
                 <p className="text-base font-black text-slate-900">
                   {formatCLP(gasto.monto)}
                 </p>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  {formatDate(gasto.created_at)}
-                </p>
               </div>
 
-              {gasto.signedUrl && (
-                <button
-                  type="button"
-                  onClick={() => setModalFoto(gasto.signedUrl!)}
-                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 hover:text-sky-600 text-xs font-bold shadow-sm active:bg-slate-100"
-                >
-                  <svg
-                    className="w-4 h-4 text-slate-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs">
+                <span className="text-slate-400 text-[11px]">{formatDate(gasto.created_at)}</span>
+
+                <div className="flex items-center gap-1.5">
+                  {/* Ver Boleta */}
+                  {gasto.signedUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setModalFoto(gasto.signedUrl!)}
+                      className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:text-sky-600 text-xs font-bold shadow-sm"
+                    >
+                      Ver Foto
+                    </button>
+                  )}
+
+                  {/* Editar */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionFeedback(null);
+                      setGastoToEdit(gasto);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:text-amber-600 text-xs font-bold shadow-sm"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                    />
-                  </svg>
-                  Ver Boleta
-                </button>
-              )}
+                    Editar
+                  </button>
+
+                  {/* Eliminar */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionFeedback(null);
+                      setGastoToDelete(gasto);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold shadow-sm"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Modal visor de foto */}
+      {/* Modal Visor de Foto */}
       {modalFoto && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
@@ -303,6 +374,163 @@ export default function HistorialGastos({ gastos }: HistorialGastosProps) {
                 alt="Comprobante en alta resolución"
                 className="max-h-[75vh] w-auto object-contain"
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Editar Rendición */}
+      {gastoToEdit && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setGastoToEdit(null)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  Modificar Rendición
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Corrige los datos o el número de comprobante.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGastoToEdit(null)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form ref={editFormRef} action={editAction} className="space-y-3.5">
+              <input type="hidden" name="gastoId" value={gastoToEdit.id} />
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Categoría *
+                </label>
+                <select
+                  name="categoria"
+                  required
+                  defaultValue={gastoToEdit.categoria}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 font-medium focus:border-sky-500 focus:outline-none"
+                >
+                  {CATEGORIAS.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Nº de Comprobante / Boleta *
+                </label>
+                <input
+                  name="numero_comprobante"
+                  type="text"
+                  required
+                  defaultValue={gastoToEdit.numero_comprobante}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Monto Total ($ CLP) *
+                </label>
+                <input
+                  name="monto"
+                  type="number"
+                  step="1"
+                  min="1"
+                  required
+                  defaultValue={gastoToEdit.monto}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 font-semibold focus:border-sky-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Cambiar Foto de Comprobante (Opcional)
+                </label>
+                <input
+                  name="foto"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100"
+                />
+                <span className="text-[10px] text-slate-400 block mt-1">
+                  Si no seleccionas un nuevo archivo, se conservará la foto original.
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setGastoToEdit(null)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isEditing}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-50 shadow-sm"
+                >
+                  {isEditing ? 'Guardando...' : 'Guardar Corrección'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación para Eliminar */}
+      {gastoToDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setGastoToDelete(null)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-black text-slate-900 mb-1">
+              ¿Eliminar Rendición?
+            </h3>
+            <p className="text-xs text-slate-600 mb-3">
+              ¿Estás seguro de que deseas eliminar la rendición del comprobante{' '}
+              <strong className="text-slate-900">#{gastoToDelete.numero_comprobante}</strong> por{' '}
+              <strong className="text-slate-900">{formatCLP(gastoToDelete.monto)}</strong>?
+            </p>
+            <p className="text-[11px] text-red-600 font-semibold mb-4 bg-red-50 p-2 rounded-lg border border-red-100">
+              Esta acción borrará el comprobante y el registro de la base de datos de forma permanente.
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setGastoToDelete(null)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 shadow-sm"
+              >
+                {isDeleting ? 'Eliminando...' : 'Sí, Eliminar'}
+              </button>
             </div>
           </div>
         </div>
