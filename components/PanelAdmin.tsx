@@ -922,34 +922,28 @@ export default function PanelAdmin({
               <table className="w-full text-left text-sm text-slate-700 print:text-xs print:border print:border-slate-300">
                 <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 print:bg-slate-100 print:text-black">
                   <tr>
-                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3.5 py-3.5 print:px-2 print:py-2">
                       Folio
                     </th>
-                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3.5 py-3.5 print:px-2 print:py-2">
                       Fecha / Hora
                     </th>
-                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3.5 py-3.5 print:px-2 print:py-2">
                       Colaborador
                     </th>
-                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
-                      Área
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3.5 py-3.5 print:px-2 print:py-2">
                       Modalidad
                     </th>
-                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3.5 py-3.5 print:px-2 print:py-2">
                       Categoría
                     </th>
-                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
-                      N° Comprobante
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 print:px-2 print:py-2">
+                    <th scope="col" className="px-3.5 py-3.5 print:px-2 print:py-2">
                       Estado
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-right print:px-2 print:py-2">
+                    <th scope="col" className="px-3.5 py-3.5 text-right print:px-2 print:py-2">
                       Monto
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-center print:hidden">
+                    <th scope="col" className="px-3.5 py-3.5 text-center print:hidden">
                       Trazabilidad & Acciones
                     </th>
                   </tr>
@@ -980,7 +974,7 @@ export default function PanelAdmin({
                         key={gasto.id}
                         className="hover:bg-slate-50/70 transition-colors print:bg-transparent"
                       >
-                        <td className="px-3 py-3 whitespace-nowrap print:px-2 print:py-1.5">
+                        <td className="px-3.5 py-3 whitespace-nowrap print:px-2 print:py-1.5">
                           <button
                             type="button"
                             onClick={handleOpenCartola}
@@ -999,10 +993,10 @@ export default function PanelAdmin({
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap print:px-2 print:py-1.5 print:text-slate-800">
+                        <td className="px-3.5 py-3 text-xs text-slate-500 whitespace-nowrap print:px-2 print:py-1.5 print:text-slate-800">
                           {formatDate(gasto.created_at)}
                         </td>
-                        <td className="px-3 py-3 print:px-2 print:py-1.5">
+                        <td className="px-3.5 py-3 print:px-2 print:py-1.5">
                           <span className="font-bold text-slate-900 block leading-tight">
                             {gasto.nombre_empleado}
                           </span>
@@ -1010,10 +1004,7 @@ export default function PanelAdmin({
                             {gasto.email_empleado}
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-xs font-medium text-slate-600 whitespace-nowrap print:px-2 print:py-1.5 print:text-slate-800">
-                          {gasto.area_empleado}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap print:px-2 print:py-1.5">
+                        <td className="px-3.5 py-3 whitespace-nowrap print:px-2 print:py-1.5">
                           {gasto.tipo_rendicion === 'anticipo' ? (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200 print:border-none">
                               Anticipo
@@ -1024,7 +1015,7 @@ export default function PanelAdmin({
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap print:px-2 print:py-1.5">
+                        <td className="px-3.5 py-3 whitespace-nowrap print:px-2 print:py-1.5">
                           <span
                             className={`px-2 py-0.5 rounded-full text-xs font-bold border ${getCategoriaBadgeClass(
                               gasto.categoria
@@ -1033,10 +1024,7 @@ export default function PanelAdmin({
                             {gasto.categoria}
                           </span>
                         </td>
-                        <td className="px-3 py-3 font-mono text-xs font-semibold text-slate-800 whitespace-nowrap print:px-2 print:py-1.5">
-                          #{gasto.numero_comprobante}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap print:px-2 print:py-1.5">
+                        <td className="px-3.5 py-3 whitespace-nowrap print:px-2 print:py-1.5">
                           {gasto.estado === 'pendiente' && (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
                               ⏳ Pendiente
@@ -1079,7 +1067,7 @@ export default function PanelAdmin({
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-3 font-black text-slate-900 text-right whitespace-nowrap text-sm print:text-xs print:px-2 print:py-1.5">
+                        <td className="px-3.5 py-3 font-black text-slate-900 text-right whitespace-nowrap text-sm print:text-xs print:px-2 print:py-1.5">
                           <div>{formatCLP(gasto.monto)}</div>
                           {tieneAbonosParciales && (
                             <div className="text-[10px] font-bold text-amber-700">
@@ -1087,7 +1075,7 @@ export default function PanelAdmin({
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-3 text-center whitespace-nowrap print:hidden">
+                        <td className="px-3.5 py-3 text-center whitespace-nowrap print:hidden">
                           <div className="flex items-center justify-center gap-1.5 flex-wrap">
                             {/* Acciones de Aprobación si está Pendiente */}
                             {gasto.estado === 'pendiente' && (
