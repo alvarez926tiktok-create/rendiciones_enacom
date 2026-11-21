@@ -233,3 +233,17 @@ Registro de pagos parciales o abonos realizados por la empresa para cubrir gasto
    - **Selector Dual de Cámara y Galería/PDF en Devolución de Sobrante:**
      - En el modal de devolución de sobrante y conciliación del colaborador se ofrecen dos opciones: "📸 Tomar Foto (Cámara)" con `capture="environment"` o "📁 Galería o Archivo PDF" (`accept="image/*,application/pdf"` sin forzar cámara).
      - Soporte para adjuntar comprobantes en imagen y documentos PDF sin fallos de compresión.
+
+10. **Fase 10: Auditoría y Trazabilidad de Administradores en Aprobaciones, Rechazos y Abonos**
+    - **Esquema de Base de Datos (`supabase/migration_auditoria_admin.sql`):**
+      - Columnas en `gastos`: `revisado_por UUID REFERENCES public.profiles(id)`, `revisado_at TIMESTAMPTZ`, `motivo_rechazo TEXT`.
+      - Columnas de administrador en `abonos_reembolsos`, `recargas_fondos` y `fondos_asignados`: `admin_id UUID REFERENCES public.profiles(id)`.
+    - **Registro Automático en Server Actions:**
+      - Al aprobar (`aprobarGasto`): guarda `revisado_por: adminUser.id`, `revisado_at: NOW()`, limpia `motivo_rechazo: null`.
+      - Al rechazar (`rechazarGasto`): guarda `revisado_por: adminUser.id`, `revisado_at: NOW()`, y almacena `motivo_rechazo`.
+      - Al pagar o abonar (`reembolsarGasto`, `registrarAbonoReembolso`, `cerrarFolioDefinitivo`): registra `revisado_por` y `revisado_at`.
+      - Al asignar o recargar fondo (`asignarFondo`): registra `admin_id: adminUser.id` en el fondo y en `recargas_fondos`.
+    - **Visibilidad en Interfaz y Cartola:**
+      - En `PanelAdmin.tsx`: muestra en la tabla y tarjetas móviles el administrador revisor y fecha de aprobación/rechazo.
+      - En `ModalCartolaDetalle.tsx`: muestra en el historial cronológico el administrador que aprobó/rechazó cada boleta, así como el admin que efectuó cada abono o recarga.
+      - En `HistorialGastos.tsx`: el empleado visualiza con transparencia quién y cuándo revisó cada una de sus rendiciones.

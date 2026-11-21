@@ -17,6 +17,10 @@ export type GastoItem = {
   fondo_id: string | null;
   estado: 'pendiente' | 'aplicado_a_fondo' | 'por_pagar' | 'rechazado' | 'cerrado';
   motivo_rechazo?: string | null;
+  revisado_por?: string | null;
+  revisado_at?: string | null;
+  nombre_revisor?: string | null;
+  email_revisor?: string | null;
   comprobante_pago_url: string | null;
   created_at: string;
   signedUrl?: string | null;
@@ -422,6 +426,13 @@ export default function HistorialGastos({
                   {gasto.estado === 'cerrado' && (
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
                       ✓ Cerrado / Reembolsado
+                    </span>
+                  )}
+                  {gasto.revisado_at && (
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      gasto.estado === 'rechazado' ? 'text-red-700 bg-red-50' : 'text-slate-600 bg-slate-100'
+                    }`}>
+                      {gasto.estado === 'rechazado' ? '✕ Rechazado por' : '✓ Aprobado por'}: <strong>{gasto.nombre_revisor || 'Administrador'}</strong>
                     </span>
                   )}
                 </div>

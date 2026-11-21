@@ -208,6 +208,8 @@ export async function reembolsarGasto(
       .update({
         estado: 'cerrado',
         comprobante_pago_url: filePath,
+        revisado_por: adminUser.id,
+        revisado_at: new Date().toISOString(),
       })
       .eq('id', gastoId);
 
@@ -326,6 +328,8 @@ export async function registrarAbonoReembolso(
       .update({
         estado: estaCompletado ? 'cerrado' : 'por_pagar',
         comprobante_pago_url: filePath,
+        revisado_por: adminUser.id,
+        revisado_at: new Date().toISOString(),
       })
       .eq('id', gastoId);
 
@@ -355,7 +359,11 @@ export async function cerrarFolioDefinitivo(gastoId: string): Promise<FondoActio
     const supabase = await createClient();
     const { error } = await supabase
       .from('gastos')
-      .update({ estado: 'cerrado' })
+      .update({
+        estado: 'cerrado',
+        revisado_por: adminUser.id,
+        revisado_at: new Date().toISOString(),
+      })
       .eq('id', gastoId);
 
     if (error) {
@@ -428,6 +436,8 @@ export async function aprobarGasto(gastoId: string): Promise<FondoActionState> {
       .update({
         estado: nuevoEstado,
         motivo_rechazo: null,
+        revisado_por: adminUser.id,
+        revisado_at: new Date().toISOString(),
       })
       .eq('id', gastoId);
 
@@ -481,6 +491,8 @@ export async function rechazarGasto(gastoId: string, motivo: string): Promise<Fo
       .update({
         estado: 'rechazado',
         motivo_rechazo: motivoTrimmed,
+        revisado_por: adminUser.id,
+        revisado_at: new Date().toISOString(),
       })
       .eq('id', gastoId);
 

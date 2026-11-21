@@ -13,6 +13,8 @@ export interface AbonoItem {
   id: string;
   gasto_id: string;
   admin_id?: string | null;
+  nombre_admin?: string | null;
+  email_admin?: string | null;
   monto_abonado: number;
   comprobante_pago_url: string | null;
   signedUrl?: string | null;
@@ -24,6 +26,8 @@ export interface RecargaFondoItem {
   id: string;
   fondo_id: string;
   admin_id?: string | null;
+  nombre_admin?: string | null;
+  email_admin?: string | null;
   monto: number;
   motivo?: string | null;
   tipo: 'inicial' | 'recarga';
@@ -42,6 +46,10 @@ export interface GastoDetalleItem {
   fondo_id: string | null;
   estado: 'pendiente' | 'aplicado_a_fondo' | 'por_pagar' | 'rechazado' | 'cerrado';
   motivo_rechazo?: string | null;
+  revisado_por?: string | null;
+  revisado_at?: string | null;
+  nombre_revisor?: string | null;
+  email_revisor?: string | null;
   comprobante_pago_url: string | null;
   created_at: string;
   nombre_empleado: string;
@@ -56,6 +64,8 @@ export interface FondoDetalleItem {
   correlativo?: number | null;
   user_id: string;
   admin_id?: string | null;
+  nombre_admin?: string | null;
+  email_admin?: string | null;
   motivo: string;
   monto_asignado: number;
   estado: 'activo' | 'por_devolver' | 'cerrado';
@@ -409,6 +419,22 @@ export default function ModalCartolaDetalle({
                           </span>
                         )}
                       </div>
+
+                      {/* Auditoría / Trazabilidad de Aprobación o Rechazo */}
+                      {gasto.revisado_at && (
+                        <div className="pt-0.5">
+                          {gasto.estado === 'rechazado' ? (
+                            <span className="inline-block text-[11px] font-bold text-red-800 bg-red-50 border border-red-200 px-2 py-0.5 rounded-md">
+                              Rechazado por: <strong>{gasto.nombre_revisor || 'Administrador'}</strong> • {formatDate(gasto.revisado_at)}
+                            </span>
+                          ) : (
+                            <span className="inline-block text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                              Aprobado por: <strong>{gasto.nombre_revisor || 'Administrador'}</strong> • {formatDate(gasto.revisado_at)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       {onVerFoto && (gasto.signedUrl || gasto.foto_url) && (
                         <div className="pt-1">
                           <button
@@ -434,6 +460,11 @@ export default function ModalCartolaDetalle({
                           </span>
                           <span className="text-[11px] text-slate-400">{formatDate(abono.created_at)}</span>
                         </div>
+                        {abono.nombre_admin && (
+                          <p className="text-[11px] text-emerald-800 font-bold">
+                            Registrado por: <strong>{abono.nombre_admin}</strong>
+                          </p>
+                        )}
                         {abono.notas && (
                           <p className="text-xs text-slate-600 italic">
                             Nota: &ldquo;{abono.notas}&rdquo;
@@ -546,6 +577,11 @@ export default function ModalCartolaDetalle({
                                 </>
                               ) : null}
                             </p>
+                            {recarga.nombre_admin && (
+                              <p className="text-[11px] text-slate-500 font-medium">
+                                Asignado/Recargado por: <strong className="text-slate-800">{recarga.nombre_admin}</strong>
+                              </p>
+                            )}
                           </div>
                         </div>
                       ));
@@ -641,6 +677,21 @@ export default function ModalCartolaDetalle({
                                 </span>
                               )}
                             </div>
+
+                            {/* Auditoría de Revisión */}
+                            {g.revisado_at && (
+                              <div className="pt-0.5 text-[11px] font-bold">
+                                {esRechazada ? (
+                                  <span className="text-red-800">
+                                    Rechazado por: <strong>{g.nombre_revisor || 'Administrador'}</strong> • {formatDate(g.revisado_at)}
+                                  </span>
+                                ) : esAprobada ? (
+                                  <span className="text-emerald-800">
+                                    Aprobado por: <strong>{g.nombre_revisor || 'Administrador'}</strong> • {formatDate(g.revisado_at)}
+                                  </span>
+                                ) : null}
+                              </div>
+                            )}
 
                             {onVerFoto && (g.signedUrl || g.foto_url) && (
                               <button

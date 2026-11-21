@@ -65,15 +65,20 @@ export default async function AdminDashboardPage() {
     console.warn('Abonos no disponibles aún (se requerirá migración):', abonosError.message);
   }
 
-  const abonos: AbonoItem[] = (abonosData || []).map((a) => ({
-    id: a.id,
-    gasto_id: a.gasto_id,
-    admin_id: a.admin_id,
-    monto_abonado: a.monto_abonado,
-    comprobante_pago_url: a.comprobante_pago_url,
-    notas: a.notas,
-    created_at: a.created_at,
-  }));
+  const abonos: AbonoItem[] = (abonosData || []).map((a) => {
+    const adminProfile = a.admin_id ? profileMap.get(a.admin_id) : null;
+    return {
+      id: a.id,
+      gasto_id: a.gasto_id,
+      admin_id: a.admin_id,
+      nombre_admin: adminProfile?.nombre || null,
+      email_admin: adminProfile?.email || null,
+      monto_abonado: a.monto_abonado,
+      comprobante_pago_url: a.comprobante_pago_url,
+      notas: a.notas,
+      created_at: a.created_at,
+    };
+  });
 
   // 5.1 Obtener historial de asignaciones y recargas de fondos
   const { data: recargasData, error: recargasError } = await supabase
@@ -85,15 +90,20 @@ export default async function AdminDashboardPage() {
     console.warn('Recargas no disponibles aún:', recargasError.message);
   }
 
-  const recargas: RecargaFondoItem[] = (recargasData || []).map((r) => ({
-    id: r.id,
-    fondo_id: r.fondo_id,
-    admin_id: r.admin_id,
-    monto: r.monto,
-    motivo: r.motivo,
-    tipo: r.tipo as 'inicial' | 'recarga',
-    created_at: r.created_at,
-  }));
+  const recargas: RecargaFondoItem[] = (recargasData || []).map((r) => {
+    const adminProfile = r.admin_id ? profileMap.get(r.admin_id) : null;
+    return {
+      id: r.id,
+      fondo_id: r.fondo_id,
+      admin_id: r.admin_id,
+      nombre_admin: adminProfile?.nombre || null,
+      email_admin: adminProfile?.email || null,
+      monto: r.monto,
+      motivo: r.motivo,
+      tipo: r.tipo as 'inicial' | 'recarga',
+      created_at: r.created_at,
+    };
+  });
 
   // Firmar URLs de devolución de fondos para visualización directa en Cartola
   const devolucionPaths = (fondosData || [])
@@ -119,6 +129,7 @@ export default async function AdminDashboardPage() {
   // 6. Mapear datos consolidados con la información de cada colaborador y correlativos
   const gastosConsolidados: GastoAdminItem[] = (gastosData || []).map((g) => {
     const userProfile = profileMap.get(g.user_id);
+    const revisorProfile = g.revisado_por ? profileMap.get(g.revisado_por) : null;
     return {
       id: g.id,
       correlativo: g.correlativo || null,
@@ -131,6 +142,10 @@ export default async function AdminDashboardPage() {
       fondo_id: g.fondo_id || null,
       estado: (g.estado as any) || 'pendiente',
       motivo_rechazo: g.motivo_rechazo || null,
+      revisado_por: g.revisado_por || null,
+      revisado_at: g.revisado_at || null,
+      nombre_revisor: revisorProfile?.nombre || null,
+      email_revisor: revisorProfile?.email || null,
       comprobante_pago_url: g.comprobante_pago_url || null,
       created_at: g.created_at,
       nombre_empleado: userProfile?.nombre || 'Colaborador',
@@ -141,11 +156,14 @@ export default async function AdminDashboardPage() {
 
   const fondosConsolidados: FondoAdminItem[] = (fondosData || []).map((f) => {
     const userProfile = profileMap.get(f.user_id);
+    const adminProfile = f.admin_id ? profileMap.get(f.admin_id) : null;
     return {
       id: f.id,
       correlativo: f.correlativo || null,
       user_id: f.user_id,
       admin_id: f.admin_id,
+      nombre_admin: adminProfile?.nombre || null,
+      email_admin: adminProfile?.email || null,
       motivo: f.motivo,
       monto_asignado: f.monto_asignado,
       estado: f.estado,

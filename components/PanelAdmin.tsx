@@ -24,6 +24,10 @@ export interface GastoAdminItem {
   fondo_id: string | null;
   estado: 'pendiente' | 'aplicado_a_fondo' | 'por_pagar' | 'rechazado' | 'cerrado';
   motivo_rechazo?: string | null;
+  revisado_por?: string | null;
+  revisado_at?: string | null;
+  nombre_revisor?: string | null;
+  email_revisor?: string | null;
   comprobante_pago_url: string | null;
   created_at: string;
   nombre_empleado: string;
@@ -36,6 +40,8 @@ export interface FondoAdminItem {
   correlativo?: number | null;
   user_id: string;
   admin_id: string | null;
+  nombre_admin?: string | null;
+  email_admin?: string | null;
   motivo: string;
   monto_asignado: number;
   estado: 'activo' | 'por_devolver' | 'cerrado';
@@ -1063,6 +1069,15 @@ export default function PanelAdmin({
                               Cerrado
                             </span>
                           )}
+
+                          {/* Trazabilidad de Auditoría */}
+                          {gasto.revisado_at && (
+                            <span className={`block text-[9px] font-semibold mt-0.5 max-w-[150px] truncate print:text-[8px] ${
+                              gasto.estado === 'rechazado' ? 'text-red-700' : 'text-slate-500'
+                            }`} title={`${gasto.estado === 'rechazado' ? 'Rechazado' : 'Aprobado'} por ${gasto.nombre_revisor || 'Admin'} el ${formatDate(gasto.revisado_at)}`}>
+                              {gasto.estado === 'rechazado' ? '✕' : '✓'} {gasto.nombre_revisor || 'Admin'} • {formatDate(gasto.revisado_at)}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-3 font-black text-slate-900 text-right whitespace-nowrap text-sm print:text-xs print:px-2 print:py-1.5">
                           <div>{formatCLP(gasto.monto)}</div>
@@ -1227,6 +1242,13 @@ export default function PanelAdmin({
                         {gasto.estado === 'rechazado' && gasto.motivo_rechazo && (
                           <p className="text-xs text-red-600 font-medium mt-0.5">
                             Motivo: {gasto.motivo_rechazo}
+                          </p>
+                        )}
+                        {gasto.revisado_at && (
+                          <p className={`text-[11px] font-bold mt-0.5 ${
+                            gasto.estado === 'rechazado' ? 'text-red-700' : 'text-slate-600'
+                          }`}>
+                            {gasto.estado === 'rechazado' ? 'Rechazado' : 'Aprobado'} por: <strong>{gasto.nombre_revisor || 'Admin'}</strong>
                           </p>
                         )}
                       </div>

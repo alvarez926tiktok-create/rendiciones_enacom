@@ -39,6 +39,12 @@ export default async function RendicionesPage() {
     profile = createdProfile;
   }
 
+  // 1.1 Obtener mapa de perfiles para trazabilidad y nombres de administradores revisores
+  const { data: allProfiles } = await supabase
+    .from('profiles')
+    .select('id, nombre, email');
+  const profileMap = new Map((allProfiles || []).map((p) => [p.id, p]));
+
   // 2. Obtener gastos del usuario en orden descendente
   const { data: gastos, error: gastosError } = await supabase
     .from('gastos')
@@ -106,15 +112,20 @@ export default async function RendicionesPage() {
     recargasRaw = recargasData || [];
   }
 
-  const recargas: RecargaFondoItem[] = recargasRaw.map((r) => ({
-    id: r.id,
-    fondo_id: r.fondo_id,
-    admin_id: r.admin_id,
-    monto: r.monto,
-    motivo: r.motivo,
-    tipo: r.tipo as 'inicial' | 'recarga',
-    created_at: r.created_at,
-  }));
+  const recargas: RecargaFondoItem[] = recargasRaw.map((r) => {
+    const adminProfile = r.admin_id ? profileMap.get(r.admin_id) : null;
+    return {
+      id: r.id,
+      fondo_id: r.fondo_id,
+      admin_id: r.admin_id,
+      nombre_admin: adminProfile?.nombre || null,
+      email_admin: adminProfile?.email || null,
+      monto: r.monto,
+      motivo: r.motivo,
+      tipo: r.tipo as 'inicial' | 'recarga',
+      created_at: r.created_at,
+    };
+  });
 
   // 5. Calcular total de reembolsos acumulados pendientes (restando abonos parciales)
   const totalReembolsosPendientes = (gastos || [])
@@ -163,85 +174,114 @@ export default async function RendicionesPage() {
       signedDevolucionUrlFondo = signedMap.get(fondoActivoRaw.comprobante_devolucion_url) || null;
     }
 
-    gastosConUrls = (gastos || []).map((g) => ({
-      id: g.id,
-      correlativo: g.correlativo || null,
-      user_id: g.user_id,
-      categoria: g.categoria,
-      numero_comprobante: g.numero_comprobante,
-      monto: g.monto,
-      foto_url: g.foto_url,
-      tipo_rendicion: (g.tipo_rendicion as any) || 'reembolso',
-      fondo_id: g.fondo_id || null,
-      estado: (g.estado as any) || 'pendiente',
-      motivo_rechazo: g.motivo_rechazo || null,
-      comprobante_pago_url: g.comprobante_pago_url || null,
-      created_at: g.created_at,
-      signedUrl: signedMap.get(g.foto_url) || null,
-      signedPagoUrl: g.comprobante_pago_url ? signedMap.get(g.comprobante_pago_url) || null : null,
-    }));
+    gastosConUrls = (gastos || []).map((g) => {
+      const revisorProfile = g.revisado_por ? profileMap.get(g.revisado_por) : null;
+      return {
+        id: g.id,
+        correlativo: g.correlativo || null,
+        user_id: g.user_id,
+        categoria: g.categoria,
+        numero_comprobante: g.numero_comprobante,
+        monto: g.monto,
+        foto_url: g.foto_url,
+        tipo_rendicion: (g.tipo_rendicion as any) || 'reembolso',
+        fondo_id: g.fondo_id || null,
+        estado: (g.estado as any) || 'pendiente',
+        motivo_rechazo: g.motivo_rechazo || null,
+        revisado_por: g.revisado_por || null,
+        revisado_at: g.revisado_at || null,
+        nombre_revisor: revisorProfile?.nombre || null,
+        email_revisor: revisorProfile?.email || null,
+        comprobante_pago_url: g.comprobante_pago_url || null,
+        created_at: g.created_at,
+        signedUrl: signedMap.get(g.foto_url) || null,
+        signedPagoUrl: g.comprobante_pago_url ? signedMap.get(g.comprobante_pago_url) || null : null,
+      };
+    });
 
-    abonosConUrls = abonosRaw.map((a) => ({
-      id: a.id,
-      gasto_id: a.gasto_id,
-      admin_id: a.admin_id,
-      monto_abonado: a.monto_abonado,
-      comprobante_pago_url: a.comprobante_pago_url,
-      signedUrl: a.comprobante_pago_url ? signedMap.get(a.comprobante_pago_url) || null : null,
-      notas: a.notas,
-      created_at: a.created_at,
-    }));
+    abonosConUrls = abonosRaw.map((a) => {
+      const adminProfile = a.admin_id ? profileMap.get(a.admin_id) : null;
+      return {
+        id: a.id,
+        gasto_id: a.gasto_id,
+        admin_id: a.admin_id,
+        nombre_admin: adminProfile?.nombre || null,
+        email_admin: adminProfile?.email || null,
+        monto_abonado: a.monto_abonado,
+        comprobante_pago_url: a.comprobante_pago_url,
+        signedUrl: a.comprobante_pago_url ? signedMap.get(a.comprobante_pago_url) || null : null,
+        notas: a.notas,
+        created_at: a.created_at,
+      };
+    });
 
-    fondosConUrls = todosLosFondos.map((f) => ({
-      id: f.id,
-      correlativo: f.correlativo || null,
-      user_id: f.user_id,
-      admin_id: f.admin_id,
-      motivo: f.motivo,
-      monto_asignado: f.monto_asignado,
-      estado: f.estado,
-      comprobante_devolucion_url: f.comprobante_devolucion_url || null,
-      signedDevolucionUrl: f.comprobante_devolucion_url ? signedMap.get(f.comprobante_devolucion_url) || null : null,
-      monto_devuelto: f.monto_devuelto || 0,
-      created_at: f.created_at,
-      nombre_empleado: profile?.nombre || 'Colaborador',
-      area_empleado: profile?.area || 'Terreno',
-    }));
+    fondosConUrls = todosLosFondos.map((f) => {
+      const adminProfile = f.admin_id ? profileMap.get(f.admin_id) : null;
+      return {
+        id: f.id,
+        correlativo: f.correlativo || null,
+        user_id: f.user_id,
+        admin_id: f.admin_id,
+        nombre_admin: adminProfile?.nombre || null,
+        email_admin: adminProfile?.email || null,
+        motivo: f.motivo,
+        monto_asignado: f.monto_asignado,
+        estado: f.estado,
+        comprobante_devolucion_url: f.comprobante_devolucion_url || null,
+        signedDevolucionUrl: f.comprobante_devolucion_url ? signedMap.get(f.comprobante_devolucion_url) || null : null,
+        monto_devuelto: f.monto_devuelto || 0,
+        created_at: f.created_at,
+        nombre_empleado: profile?.nombre || 'Colaborador',
+        area_empleado: profile?.area || 'Terreno',
+      };
+    });
   } catch (err) {
     console.error('Error al procesar URLs firmadas:', err);
-    gastosConUrls = (gastos || []).map((g) => ({
-      id: g.id,
-      correlativo: g.correlativo || null,
-      user_id: g.user_id,
-      categoria: g.categoria,
-      numero_comprobante: g.numero_comprobante,
-      monto: g.monto,
-      foto_url: g.foto_url,
-      tipo_rendicion: (g.tipo_rendicion as any) || 'reembolso',
-      fondo_id: g.fondo_id || null,
-      estado: (g.estado as any) || 'pendiente',
-      motivo_rechazo: g.motivo_rechazo || null,
-      comprobante_pago_url: g.comprobante_pago_url || null,
-      created_at: g.created_at,
-      signedUrl: null,
-      signedPagoUrl: null,
-    }));
+    gastosConUrls = (gastos || []).map((g) => {
+      const revisorProfile = g.revisado_por ? profileMap.get(g.revisado_por) : null;
+      return {
+        id: g.id,
+        correlativo: g.correlativo || null,
+        user_id: g.user_id,
+        categoria: g.categoria,
+        numero_comprobante: g.numero_comprobante,
+        monto: g.monto,
+        foto_url: g.foto_url,
+        tipo_rendicion: (g.tipo_rendicion as any) || 'reembolso',
+        fondo_id: g.fondo_id || null,
+        estado: (g.estado as any) || 'pendiente',
+        motivo_rechazo: g.motivo_rechazo || null,
+        revisado_por: g.revisado_por || null,
+        revisado_at: g.revisado_at || null,
+        nombre_revisor: revisorProfile?.nombre || null,
+        email_revisor: revisorProfile?.email || null,
+        comprobante_pago_url: g.comprobante_pago_url || null,
+        created_at: g.created_at,
+        signedUrl: null,
+        signedPagoUrl: null,
+      };
+    });
 
-    fondosConUrls = todosLosFondos.map((f) => ({
-      id: f.id,
-      correlativo: f.correlativo || null,
-      user_id: f.user_id,
-      admin_id: f.admin_id,
-      motivo: f.motivo,
-      monto_asignado: f.monto_asignado,
-      estado: f.estado,
-      comprobante_devolucion_url: f.comprobante_devolucion_url || null,
-      signedDevolucionUrl: null,
-      monto_devuelto: f.monto_devuelto || 0,
-      created_at: f.created_at,
-      nombre_empleado: profile?.nombre || 'Colaborador',
-      area_empleado: profile?.area || 'Terreno',
-    }));
+    fondosConUrls = todosLosFondos.map((f) => {
+      const adminProfile = f.admin_id ? profileMap.get(f.admin_id) : null;
+      return {
+        id: f.id,
+        correlativo: f.correlativo || null,
+        user_id: f.user_id,
+        admin_id: f.admin_id,
+        nombre_admin: adminProfile?.nombre || null,
+        email_admin: adminProfile?.email || null,
+        motivo: f.motivo,
+        monto_asignado: f.monto_asignado,
+        estado: f.estado,
+        comprobante_devolucion_url: f.comprobante_devolucion_url || null,
+        signedDevolucionUrl: null,
+        monto_devuelto: f.monto_devuelto || 0,
+        created_at: f.created_at,
+        nombre_empleado: profile?.nombre || 'Colaborador',
+        area_empleado: profile?.area || 'Terreno',
+      };
+    });
   }
 
   const fondoActivoData: FondoAsignadoActivo | null = fondoActivoRaw
