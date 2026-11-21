@@ -20,6 +20,16 @@ export interface AbonoItem {
   created_at: string;
 }
 
+export interface RecargaFondoItem {
+  id: string;
+  fondo_id: string;
+  admin_id?: string | null;
+  monto: number;
+  motivo?: string | null;
+  tipo: 'inicial' | 'recarga';
+  created_at: string;
+}
+
 export interface GastoDetalleItem {
   id: string;
   correlativo?: number | null;
@@ -30,7 +40,8 @@ export interface GastoDetalleItem {
   foto_url: string;
   tipo_rendicion: 'anticipo' | 'reembolso';
   fondo_id: string | null;
-  estado: 'aplicado_a_fondo' | 'por_pagar' | 'cerrado';
+  estado: 'pendiente' | 'aplicado_a_fondo' | 'por_pagar' | 'rechazado' | 'cerrado';
+  motivo_rechazo?: string | null;
   comprobante_pago_url: string | null;
   created_at: string;
   nombre_empleado: string;
@@ -63,6 +74,7 @@ interface ModalCartolaDetalleProps {
   fondo?: FondoDetalleItem | null;
   abonos?: AbonoItem[];
   gastosVinculados?: GastoDetalleItem[];
+  recargas?: RecargaFondoItem[];
   isAdmin?: boolean;
   onClose: () => void;
   onVerFoto?: (url: string, titulo: string) => void;
@@ -75,6 +87,7 @@ export default function ModalCartolaDetalle({
   fondo,
   abonos = [],
   gastosVinculados = [],
+  recargas = [],
   isAdmin = false,
   onClose,
   onVerFoto,
@@ -126,7 +139,14 @@ export default function ModalCartolaDetalle({
   const saldoPendienteReembolso = Math.max(0, montoGastoEfectivo - totalPagadoReembolso);
 
   // Cálculos matemáticos para Fondos
-  const totalRendidoEnFondo = gastosVinculados.reduce((sum, g) => sum + g.monto, 0);
+  const gastosAprobadosFondo = gastosVinculados.filter(
+    (g) => g.estado === 'aplicado_a_fondo' || g.estado === 'cerrado'
+  );
+  const totalRendidoEnFondo = gastosAprobadosFondo.reduce((sum, g) => sum + g.monto, 0);
+
+  const gastosPendientesFondo = gastosVinculados.filter((g) => g.estado === 'pendiente');
+  const totalPendienteEnFondo = gastosPendientesFondo.reduce((sum, g) => sum + g.monto, 0);
+
   const montoAsignadoFondo = fondo?.monto_asignado || 0;
   const montoDevueltoFondo = fondo?.monto_devuelto || 0;
   const saldoRestanteFondo = Math.max(0, montoAsignadoFondo - totalRendidoEnFondo - montoDevueltoFondo);
@@ -284,16 +304,26 @@ export default function ModalCartolaDetalle({
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-center">
-                <span className="text-[10px] font-bold uppercase text-slate-500 block">Monto Asignado</span>
+                <span className="text-[10px] font-bold uppercase text-slate-500 block">Total Asignado</span>
                 <span className="text-base font-black text-slate-900 block mt-0.5">
                   {formatCLP(montoAsignadoFondo)}
                 </span>
+                {recargas.filter((r) => r.fondo_id === fondo?.id && r.tipo === 'recarga').length > 0 && (
+                  <span className="text-[10px] text-indigo-700 font-bold block">
+                    (Con {recargas.filter((r) => r.fondo_id === fondo?.id && r.tipo === 'recarga').length} recargas)
+                  </span>
+                )}
               </div>
               <div className="bg-sky-50 border border-sky-200 rounded-2xl p-3 text-center">
-                <span className="text-[10px] font-bold uppercase text-sky-700 block">Total Rendido</span>
+                <span className="text-[10px] font-bold uppercase text-sky-700 block">Rendido Aprobado</span>
                 <span className="text-base font-black text-sky-950 block mt-0.5">
                   {formatCLP(totalRendidoEnFondo)}
                 </span>
+                {totalPendienteEnFondo > 0 && (
+                  <span className="text-[10px] text-amber-700 font-bold block">
+                    + {formatCLP(totalPendienteEnFondo)} por aprobar
+                  </span>
+                )}
               </div>
               <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center">
                 <span className="text-[10px] font-bold uppercase text-emerald-700 block">Devuelto</span>
@@ -349,6 +379,36 @@ export default function ModalCartolaDetalle({
                       <p className="text-xs text-slate-600">
                         Boleta #{gasto.numero_comprobante} por valor de <strong className="text-slate-900">{formatCLP(gasto.monto)}</strong> en categoría <strong>{gasto.categoria}</strong>.
                       </p>
+                      <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                            gasto.estado === 'por_pagar'
+                              ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                              : gasto.estado === 'aplicado_a_fondo'
+                              ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                              : gasto.estado === 'pendiente'
+                              ? 'bg-yellow-100 text-yellow-900 border border-yellow-200'
+                              : gasto.estado === 'rechazado'
+                              ? 'bg-red-100 text-red-900 border border-red-200'
+                              : 'bg-slate-100 text-slate-800 border border-slate-200'
+                          }`}
+                        >
+                          {gasto.estado === 'pendiente'
+                            ? '⏳ Pendiente de Aprobación'
+                            : gasto.estado === 'por_pagar'
+                            ? '✓ Aprobado (Por Pagar)'
+                            : gasto.estado === 'aplicado_a_fondo'
+                            ? '✓ Aprobado (Aplicado a Fondo)'
+                            : gasto.estado === 'rechazado'
+                            ? '✕ Rechazada'
+                            : '✓ Cerrado'}
+                        </span>
+                        {gasto.estado === 'rechazado' && gasto.motivo_rechazo && (
+                          <span className="text-xs text-red-700 font-medium">
+                            Motivo: &ldquo;{gasto.motivo_rechazo}&rdquo;
+                          </span>
+                        )}
+                      </div>
                       {onVerFoto && (gasto.signedUrl || gasto.foto_url) && (
                         <div className="pt-1">
                           <button
@@ -442,50 +502,161 @@ export default function ModalCartolaDetalle({
 
               {tipo === 'fondo' && fondo && (
                 <>
-                  {/* Evento 1: Asignación Inicial */}
-                  <div className="relative">
-                    <span className="absolute -left-6 top-1 h-3 w-3 rounded-full bg-sky-500 ring-4 ring-white"></span>
-                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-900">
-                          Entrega de Fondo Asignado / Viático
-                        </span>
-                        <span className="text-[11px] text-slate-400">{formatDate(fondo.created_at)}</span>
-                      </div>
-                      <p className="text-xs text-slate-600">
-                        La empresa asignó <strong className="text-slate-900">{formatCLP(fondo.monto_asignado)}</strong> para: <em>&ldquo;{fondo.motivo}&rdquo;</em>.
-                      </p>
-                    </div>
-                  </div>
+                  {/* Evento 1: Asignaciones y Recargas del Fondo */}
+                  {(() => {
+                    const recargasFondo = recargas.filter((r) => r.fondo_id === fondo.id);
+                    if (recargasFondo.length > 0) {
+                      return recargasFondo.map((recarga, idx) => (
+                        <div key={recarga.id} className="relative">
+                          <span
+                            className={`absolute -left-6 top-1 h-3 w-3 rounded-full ${
+                              recarga.tipo === 'inicial' ? 'bg-sky-500' : 'bg-indigo-600'
+                            } ring-4 ring-white`}
+                          ></span>
+                          <div
+                            className={`border rounded-2xl p-3.5 space-y-1 ${
+                              recarga.tipo === 'inicial'
+                                ? 'bg-slate-50 border-slate-200'
+                                : 'bg-indigo-50/50 border-indigo-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span
+                                className={`text-xs font-black ${
+                                  recarga.tipo === 'inicial' ? 'text-slate-900' : 'text-indigo-950'
+                                }`}
+                              >
+                                {recarga.tipo === 'inicial'
+                                  ? 'Asignación Inicial de Fondo / Viático'
+                                  : `Recarga a Fondo Asignado (#${idx})`}
+                              </span>
+                              <span className="text-[11px] text-slate-400">
+                                {formatDate(recarga.created_at)}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-600">
+                              Monto asignado:{' '}
+                              <strong className="text-slate-900 font-black">
+                                +{formatCLP(recarga.monto)}
+                              </strong>
+                              {recarga.motivo ? (
+                                <>
+                                  {' '}
+                                  • Motivo: <em>&ldquo;{recarga.motivo}&rdquo;</em>
+                                </>
+                              ) : null}
+                            </p>
+                          </div>
+                        </div>
+                      ));
+                    }
 
-                  {/* Evento 2: Boletas descontadas */}
+                    // Fallback si no hay registros en recargas_fondos aún
+                    return (
+                      <div className="relative">
+                        <span className="absolute -left-6 top-1 h-3 w-3 rounded-full bg-sky-500 ring-4 ring-white"></span>
+                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-900">
+                              Entrega de Fondo Asignado / Viático
+                            </span>
+                            <span className="text-[11px] text-slate-400">
+                              {formatDate(fondo.created_at)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600">
+                            La empresa asignó{' '}
+                            <strong className="text-slate-900">{formatCLP(fondo.monto_asignado)}</strong>{' '}
+                            para: <em>&ldquo;{fondo.motivo}&rdquo;</em>.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Evento 2: Boletas descontadas y estados */}
                   {gastosVinculados.length === 0 ? (
                     <div className="relative text-xs text-slate-400 italic py-1">
                       Aún no se han registrado boletas asociadas a este fondo.
                     </div>
                   ) : (
-                    gastosVinculados.map((g) => (
-                      <div key={g.id} className="relative">
-                        <span className="absolute -left-6 top-1 h-3 w-3 rounded-full bg-amber-500 ring-4 ring-white"></span>
-                        <div className="bg-amber-50/40 border border-amber-200 rounded-2xl p-3 space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-900">
-                              Descuento Boleta #{g.numero_comprobante} ({g.categoria}): -{formatCLP(g.monto)}
-                            </span>
-                            <span className="text-[11px] text-slate-400">{formatDate(g.created_at)}</span>
+                    gastosVinculados.map((g) => {
+                      const esAprobada = g.estado === 'aplicado_a_fondo' || g.estado === 'cerrado';
+                      const esPendiente = g.estado === 'pendiente';
+                      const esRechazada = g.estado === 'rechazado';
+
+                      return (
+                        <div key={g.id} className="relative">
+                          <span
+                            className={`absolute -left-6 top-1 h-3 w-3 rounded-full ${
+                              esAprobada
+                                ? 'bg-emerald-500'
+                                : esPendiente
+                                ? 'bg-amber-500'
+                                : 'bg-red-500'
+                            } ring-4 ring-white`}
+                          ></span>
+                          <div
+                            className={`border rounded-2xl p-3 space-y-1.5 ${
+                              esAprobada
+                                ? 'bg-emerald-50/30 border-emerald-200'
+                                : esPendiente
+                                ? 'bg-amber-50/40 border-amber-200'
+                                : 'bg-red-50/30 border-red-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between flex-wrap gap-1">
+                              <span className="text-xs font-bold text-slate-900">
+                                {esAprobada
+                                  ? `Descuento Boleta #${g.numero_comprobante} (${g.categoria}): -${formatCLP(g.monto)}`
+                                  : `Boleta #${g.numero_comprobante} (${g.categoria}): ${formatCLP(g.monto)}`}
+                              </span>
+                              <span className="text-[11px] text-slate-400">{formatDate(g.created_at)}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                                  esAprobada
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : esPendiente
+                                    ? 'bg-amber-100 text-amber-900'
+                                    : 'bg-red-100 text-red-900'
+                                }`}
+                              >
+                                {esAprobada
+                                  ? '✓ Descontado (Aprobada)'
+                                  : esPendiente
+                                  ? '⏳ Pendiente de Aprobación'
+                                  : '✕ Rechazada'}
+                              </span>
+                              {esPendiente && (
+                                <span className="text-[11px] text-amber-800 font-medium italic">
+                                  No descuenta saldo del fondo hasta ser aprobada por el admin
+                                </span>
+                              )}
+                              {esRechazada && g.motivo_rechazo && (
+                                <span className="text-[11px] text-red-800 font-medium">
+                                  Motivo: &ldquo;{g.motivo_rechazo}&rdquo;
+                                </span>
+                              )}
+                            </div>
+
+                            {onVerFoto && (g.signedUrl || g.foto_url) && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onVerFoto(g.signedUrl || g.foto_url, `Boleta #${g.numero_comprobante}`)
+                                }
+                                className="text-[11px] font-bold text-sky-700 hover:underline pt-0.5 block"
+                              >
+                                Ver Boleta Adjunta
+                              </button>
+                            )}
                           </div>
-                          {onVerFoto && (g.signedUrl || g.foto_url) && (
-                            <button
-                              type="button"
-                              onClick={() => onVerFoto(g.signedUrl || g.foto_url, `Boleta #${g.numero_comprobante}`)}
-                              className="text-[11px] font-bold text-sky-700 hover:underline pt-0.5 block"
-                            >
-                              Ver Boleta Adjunta
-                            </button>
-                          )}
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
 
                   {/* Evento 3: Devolución de Sobrante */}

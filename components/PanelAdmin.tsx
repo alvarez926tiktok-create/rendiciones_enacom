@@ -2,9 +2,15 @@
 
 import { useState, useMemo, useActionState, useEffect, useRef } from 'react';
 import { obtenerUrlComprobante } from '@/app/admin/actions';
-import { asignarFondo, reembolsarGasto, type FondoActionState } from '@/app/admin/fondos-actions';
+import {
+  asignarFondo,
+  reembolsarGasto,
+  aprobarGasto,
+  rechazarGasto,
+  type FondoActionState,
+} from '@/app/admin/fondos-actions';
 import { formatFolioFondo, formatFolioGasto, formatFolioReembolso } from '@/lib/folios';
-import ModalCartolaDetalle, { type AbonoItem } from '@/components/ModalCartolaDetalle';
+import ModalCartolaDetalle, { type AbonoItem, type RecargaFondoItem } from '@/components/ModalCartolaDetalle';
 
 export interface GastoAdminItem {
   id: string;
@@ -16,7 +22,8 @@ export interface GastoAdminItem {
   foto_url: string;
   tipo_rendicion: 'anticipo' | 'reembolso';
   fondo_id: string | null;
-  estado: 'aplicado_a_fondo' | 'por_pagar' | 'cerrado';
+  estado: 'pendiente' | 'aplicado_a_fondo' | 'por_pagar' | 'rechazado' | 'cerrado';
+  motivo_rechazo?: string | null;
   comprobante_pago_url: string | null;
   created_at: string;
   nombre_empleado: string;
@@ -54,6 +61,7 @@ interface PanelAdminProps {
   profiles: ProfileItem[];
   fondos?: FondoAdminItem[];
   abonos?: AbonoItem[];
+  recargas?: RecargaFondoItem[];
 }
 
 const AREAS = [
@@ -82,6 +90,7 @@ export default function PanelAdmin({
   profiles,
   fondos = [],
   abonos = [],
+  recargas = [],
 }: PanelAdminProps) {
   // Filtros reactivos
   const [selectedArea, setSelectedArea] = useState<string>('Todas');
@@ -99,6 +108,13 @@ export default function PanelAdmin({
   // Modales
   const [modalAsignarOpen, setModalAsignarOpen] = useState<boolean>(false);
   const [gastoToReembolsar, setGastoToReembolsar] = useState<GastoAdminItem | null>(null);
+
+  // Modal Rechazo de Rendición
+  const [gastoToRechazar, setGastoToRechazar] = useState<GastoAdminItem | null>(null);
+  const [motivoRechazoInput, setMotivoRechazoInput] = useState<string>('');
+  const [isRechazando, setIsRechazando] = useState<boolean>(false);
+  const [isAprobandoId, setIsAprobandoId] = useState<string | null>(null);
+  const [adminFeedback, setAdminFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Modal Cartola / Detalle
   const [cartolaData, setCartolaData] = useState<{
@@ -125,6 +141,51 @@ export default function PanelAdmin({
 
   const asignarFormRef = useRef<HTMLFormElement>(null);
   const reembolsarFormRef = useRef<HTMLFormElement>(null);
+
+  // Manejo de Aprobación de Gasto
+  const handleAprobarGasto = async (gastoId: string) => {
+    setIsAprobandoId(gastoId);
+    setAdminFeedback(null);
+    try {
+      const res = await aprobarGasto(gastoId);
+      if (res.success) {
+        setAdminFeedback({ type: 'success', message: res.message || 'Rendición aprobada exitosamente.' });
+      } else if (res.error) {
+        setAdminFeedback({ type: 'error', message: res.error });
+      }
+    } catch (err: any) {
+      setAdminFeedback({ type: 'error', message: err.message || 'Error al aprobar.' });
+    } finally {
+      setIsAprobandoId(null);
+    }
+  };
+
+  // Manejo de Rechazo de Gasto
+  const handleRechazarGasto = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gastoToRechazar) return;
+    if (!motivoRechazoInput.trim()) {
+      setAdminFeedback({ type: 'error', message: 'Debes indicar el motivo del rechazo.' });
+      return;
+    }
+
+    setIsRechazando(true);
+    setAdminFeedback(null);
+    try {
+      const res = await rechazarGasto(gastoToRechazar.id, motivoRechazoInput);
+      if (res.success) {
+        setAdminFeedback({ type: 'success', message: res.message || 'Rendición rechazada.' });
+        setGastoToRechazar(null);
+        setMotivoRechazoInput('');
+      } else if (res.error) {
+        setAdminFeedback({ type: 'error', message: res.error });
+      }
+    } catch (err: any) {
+      setAdminFeedback({ type: 'error', message: err.message || 'Error al rechazar.' });
+    } finally {
+      setIsRechazando(false);
+    }
+  };
 
   useEffect(() => {
     if (asignarState?.success) {
@@ -230,8 +291,10 @@ export default function PanelAdmin({
       const matchCat = selectedCategoria === 'Todas' || g.categoria === selectedCategoria;
 
       let matchEstado = true;
-      if (selectedEstado === 'Por Pagar') matchEstado = g.estado === 'por_pagar';
+      if (selectedEstado === 'Pendientes') matchEstado = g.estado === 'pendiente';
+      else if (selectedEstado === 'Por Pagar') matchEstado = g.estado === 'por_pagar';
       else if (selectedEstado === 'Aplicado a Fondo') matchEstado = g.estado === 'aplicado_a_fondo';
+      else if (selectedEstado === 'Rechazados') matchEstado = g.estado === 'rechazado';
       else if (selectedEstado === 'Cerrado') matchEstado = g.estado === 'cerrado';
 
       let matchDate = true;
@@ -277,7 +340,12 @@ export default function PanelAdmin({
       })
       .reduce((sum, f) => {
         const rendido = gastos
-          .filter((g) => g.fondo_id === f.id && g.tipo_rendicion === 'anticipo')
+          .filter(
+            (g) =>
+              g.fondo_id === f.id &&
+              g.tipo_rendicion === 'anticipo' &&
+              (g.estado === 'aplicado_a_fondo' || g.estado === 'cerrado')
+          )
           .reduce((s, g) => s + g.monto, 0);
         const saldo = Math.max(0, f.monto_asignado - rendido - (f.monto_devuelto || 0));
         return sum + saldo;
@@ -305,8 +373,10 @@ export default function PanelAdmin({
       const matchUser = selectedUser === 'Todos' || g.user_id === selectedUser;
       const matchCat = selectedCategoria === 'Todas' || g.categoria === selectedCategoria;
       let matchEstado = true;
-      if (selectedEstado === 'Por Pagar') matchEstado = g.estado === 'por_pagar';
+      if (selectedEstado === 'Pendientes') matchEstado = g.estado === 'pendiente';
+      else if (selectedEstado === 'Por Pagar') matchEstado = g.estado === 'por_pagar';
       else if (selectedEstado === 'Aplicado a Fondo') matchEstado = g.estado === 'aplicado_a_fondo';
+      else if (selectedEstado === 'Rechazados') matchEstado = g.estado === 'rechazado';
       else if (selectedEstado === 'Cerrado') matchEstado = g.estado === 'cerrado';
 
       let matchDate = true;
@@ -420,14 +490,28 @@ export default function PanelAdmin({
       </div>
 
       {/* Alertas */}
-      {(asignarState?.message || reembolsarState?.message) && (
+      {(asignarState?.message || reembolsarState?.message || adminFeedback?.type === 'success') && (
         <div className="p-4 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-sm font-bold flex items-center justify-between shadow-sm">
-          <span>✓ {asignarState?.message || reembolsarState?.message}</span>
+          <span>✓ {adminFeedback?.message || asignarState?.message || reembolsarState?.message}</span>
+          <button
+            type="button"
+            onClick={() => setAdminFeedback(null)}
+            className="text-emerald-700 hover:text-emerald-900 text-xs font-bold"
+          >
+            ✕
+          </button>
         </div>
       )}
-      {(asignarState?.error || reembolsarState?.error) && (
-        <div className="p-4 rounded-xl bg-red-50 text-red-800 border border-red-200 text-sm font-bold shadow-sm">
-          ✕ {asignarState?.error || reembolsarState?.error}
+      {(asignarState?.error || reembolsarState?.error || adminFeedback?.type === 'error') && (
+        <div className="p-4 rounded-xl bg-red-50 text-red-800 border border-red-200 text-sm font-bold flex items-center justify-between shadow-sm">
+          <span>✕ {adminFeedback?.message || asignarState?.error || reembolsarState?.error}</span>
+          <button
+            type="button"
+            onClick={() => setAdminFeedback(null)}
+            className="text-red-700 hover:text-red-900 text-xs font-bold"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -563,7 +647,12 @@ export default function PanelAdmin({
                 <tbody className="divide-y divide-slate-100">
                   {fondos.map((f) => {
                     const rendido = gastos
-                      .filter((g) => g.fondo_id === f.id && g.tipo_rendicion === 'anticipo')
+                      .filter(
+                        (g) =>
+                          g.fondo_id === f.id &&
+                          g.tipo_rendicion === 'anticipo' &&
+                          (g.estado === 'aplicado_a_fondo' || g.estado === 'cerrado')
+                      )
                       .reduce((s, g) => s + g.monto, 0);
                     const saldo = Math.max(0, f.monto_asignado - rendido - (f.monto_devuelto || 0));
                     const folioFondo = formatFolioFondo(f.correlativo, f.id);
@@ -733,8 +822,10 @@ export default function PanelAdmin({
               className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 font-medium focus:border-sky-500 focus:outline-none"
             >
               <option value="Todos">Todos los estados</option>
+              <option value="Pendientes">⏳ Pendientes de Aprobación</option>
               <option value="Por Pagar">Por Pagar (Reembolsos)</option>
               <option value="Aplicado a Fondo">Aplicado a Fondo</option>
+              <option value="Rechazados">✕ Rechazados</option>
               <option value="Cerrado">Cerrado / Conciliado</option>
             </select>
           </div>
@@ -940,6 +1031,11 @@ export default function PanelAdmin({
                           #{gasto.numero_comprobante}
                         </td>
                         <td className="px-3 py-3 whitespace-nowrap print:px-2 print:py-1.5">
+                          {gasto.estado === 'pendiente' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                              ⏳ Pendiente
+                            </span>
+                          )}
                           {gasto.estado === 'por_pagar' && (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-200">
                               Por Pagar
@@ -949,6 +1045,18 @@ export default function PanelAdmin({
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-200">
                               Aplicado a Fondo
                             </span>
+                          )}
+                          {gasto.estado === 'rechazado' && (
+                            <div>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-900 border border-red-300">
+                                ✕ Rechazado
+                              </span>
+                              {gasto.motivo_rechazo && (
+                                <span className="block text-[10px] text-red-700 max-w-[120px] truncate" title={gasto.motivo_rechazo}>
+                                  {gasto.motivo_rechazo}
+                                </span>
+                              )}
+                            </div>
                           )}
                           {gasto.estado === 'cerrado' && (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-800 border border-slate-200">
@@ -965,7 +1073,33 @@ export default function PanelAdmin({
                           )}
                         </td>
                         <td className="px-3 py-3 text-center whitespace-nowrap print:hidden">
-                          <div className="flex items-center justify-center gap-1.5">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                            {/* Acciones de Aprobación si está Pendiente */}
+                            {gasto.estado === 'pendiente' && (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={isAprobandoId === gasto.id}
+                                  onClick={() => handleAprobarGasto(gasto.id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-sm transition-colors disabled:opacity-50"
+                                  title="Aprobar rendición"
+                                >
+                                  {isAprobandoId === gasto.id ? '...' : '✓ Aprobar'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGastoToRechazar(gasto);
+                                    setMotivoRechazoInput('');
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-red-300 bg-white hover:bg-red-50 text-red-600 font-bold text-xs shadow-sm transition-colors"
+                                  title="Rechazar rendición"
+                                >
+                                  ✕ Rechazar
+                                </button>
+                              </>
+                            )}
+
                             {/* Ver Cartola / Detalle */}
                             <button
                               type="button"
@@ -1055,6 +1189,11 @@ export default function PanelAdmin({
                           Reembolso
                         </span>
                       )}
+                      {gasto.estado === 'pendiente' && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                          ⏳ Pendiente
+                        </span>
+                      )}
                       {gasto.estado === 'por_pagar' && (
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-200">
                           Por Pagar
@@ -1063,6 +1202,11 @@ export default function PanelAdmin({
                       {gasto.estado === 'aplicado_a_fondo' && (
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-200">
                           Aplicado
+                        </span>
+                      )}
+                      {gasto.estado === 'rechazado' && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-red-100 text-red-900 border border-red-300">
+                          ✕ Rechazado
                         </span>
                       )}
                       {gasto.estado === 'cerrado' && (
@@ -1080,6 +1224,11 @@ export default function PanelAdmin({
                         <p className="text-xs text-slate-500 font-medium">
                           {gasto.area_empleado}
                         </p>
+                        {gasto.estado === 'rechazado' && gasto.motivo_rechazo && (
+                          <p className="text-xs text-red-600 font-medium mt-0.5">
+                            Motivo: {gasto.motivo_rechazo}
+                          </p>
+                        )}
                       </div>
                       <p className="text-lg font-black text-slate-900">
                         {formatCLP(gasto.monto)}
@@ -1088,7 +1237,29 @@ export default function PanelAdmin({
 
                     <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs text-slate-400">
                       <span>{formatDate(gasto.created_at)}</span>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {gasto.estado === 'pendiente' && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={isAprobandoId === gasto.id}
+                              onClick={() => handleAprobarGasto(gasto.id)}
+                              className="px-2 py-1 rounded-lg bg-emerald-600 text-white font-black text-xs"
+                            >
+                              {isAprobandoId === gasto.id ? '...' : 'Aprobar'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGastoToRechazar(gasto);
+                                setMotivoRechazoInput('');
+                              }}
+                              className="px-2 py-1 rounded-lg border border-red-300 bg-white text-red-600 font-bold text-xs"
+                            >
+                              Rechazar
+                            </button>
+                          </>
+                        )}
                         <button
                           type="button"
                           onClick={() => setCartolaData({ tipo: 'gasto', gasto })}
@@ -1315,6 +1486,87 @@ export default function PanelAdmin({
         </div>
       )}
 
+      {/* 8.1 MODAL RECHAZAR RENDICIÓN */}
+      {gastoToRechazar && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setGastoToRechazar(null)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  Rechazar Rendición de Gasto
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Boleta #{gastoToRechazar.numero_comprobante} • {gastoToRechazar.nombre_empleado}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGastoToRechazar(null)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
+              <div className="flex justify-between">
+                <span>Categoría:</span>
+                <strong className="text-slate-900">{gastoToRechazar.categoria}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span>Monto Rendido:</span>
+                <strong className="text-slate-900">{formatCLP(gastoToRechazar.monto)}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span>Tipo:</span>
+                <strong className="text-slate-900">
+                  {gastoToRechazar.tipo_rendicion === 'anticipo' ? 'Anticipo de Viático' : 'Reembolso Propio'}
+                </strong>
+              </div>
+            </div>
+
+            <form onSubmit={handleRechazarGasto} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Motivo del Rechazo *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={motivoRechazoInput}
+                  onChange={(e) => setMotivoRechazoInput(e.target.value)}
+                  placeholder="Ej: La boleta no es legible, no corresponde al giro del viaje, o el comprobante está duplicado..."
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 font-medium focus:border-red-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setGastoToRechazar(null)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRechazando || !motivoRechazoInput.trim()}
+                  className="px-4 py-2 rounded-xl text-xs font-black text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 shadow-sm"
+                >
+                  {isRechazando ? 'Rechazando...' : 'Confirmar Rechazo'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* 9. MODAL CARTOLA / DETALLE (HISTORIAL DE EVOLUCIÓN Y TRAZABILIDAD) */}
       {cartolaData && (
         <ModalCartolaDetalle
@@ -1327,6 +1579,7 @@ export default function PanelAdmin({
               ? gastos.filter((g) => g.fondo_id === cartolaData.fondo!.id && g.tipo_rendicion === 'anticipo')
               : []
           }
+          recargas={recargas}
           isAdmin={true}
           onClose={() => setCartolaData(null)}
           onVerFoto={handleVerFoto}

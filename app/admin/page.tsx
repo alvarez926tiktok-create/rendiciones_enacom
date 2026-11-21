@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { signOut } from '@/app/auth/actions';
 import AdminViewContainer from '@/components/AdminViewContainer';
 import { type GastoAdminItem, type ProfileItem, type FondoAdminItem } from '@/components/PanelAdmin';
-import { type AbonoItem } from '@/components/ModalCartolaDetalle';
+import { type AbonoItem, type RecargaFondoItem } from '@/components/ModalCartolaDetalle';
 
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
@@ -75,6 +75,26 @@ export default async function AdminDashboardPage() {
     created_at: a.created_at,
   }));
 
+  // 5.1 Obtener historial de asignaciones y recargas de fondos
+  const { data: recargasData, error: recargasError } = await supabase
+    .from('recargas_fondos')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  if (recargasError) {
+    console.warn('Recargas no disponibles aún:', recargasError.message);
+  }
+
+  const recargas: RecargaFondoItem[] = (recargasData || []).map((r) => ({
+    id: r.id,
+    fondo_id: r.fondo_id,
+    admin_id: r.admin_id,
+    monto: r.monto,
+    motivo: r.motivo,
+    tipo: r.tipo as 'inicial' | 'recarga',
+    created_at: r.created_at,
+  }));
+
   // Firmar URLs de devolución de fondos para visualización directa en Cartola
   const devolucionPaths = (fondosData || [])
     .map((f) => f.comprobante_devolucion_url)
@@ -109,7 +129,8 @@ export default async function AdminDashboardPage() {
       foto_url: g.foto_url,
       tipo_rendicion: (g.tipo_rendicion as any) || 'reembolso',
       fondo_id: g.fondo_id || null,
-      estado: (g.estado as any) || 'por_pagar',
+      estado: (g.estado as any) || 'pendiente',
+      motivo_rechazo: g.motivo_rechazo || null,
       comprobante_pago_url: g.comprobante_pago_url || null,
       created_at: g.created_at,
       nombre_empleado: userProfile?.nombre || 'Colaborador',
@@ -182,6 +203,7 @@ export default async function AdminDashboardPage() {
           profiles={profiles}
           fondos={fondosConsolidados}
           abonos={abonos}
+          recargas={recargas}
         />
       </main>
     </div>

@@ -54,7 +54,6 @@ export async function registrarGasto(prevState: FormState | null, formData: Form
       return { error: 'Debes adjuntar o tomar una foto del comprobante.' };
     }
 
-    let estadoGasto: 'aplicado_a_fondo' | 'por_pagar' = 'por_pagar';
     let finalFondoId: string | null = null;
 
     if (tipoRendicion === 'anticipo') {
@@ -72,15 +71,16 @@ export async function registrarGasto(prevState: FormState | null, formData: Form
         return { error: 'El fondo asignado seleccionado ya no está activo.' };
       }
 
-      // Validar saldo restante en servidor
+      // Validar saldo restante en servidor (solo gastos aprobados descuentan saldo oficial)
       const { data: gastosFondo } = await supabase
         .from('gastos')
-        .select('monto')
+        .select('monto, estado')
         .eq('fondo_id', fondoId)
-        .eq('tipo_rendicion', 'anticipo');
+        .eq('tipo_rendicion', 'anticipo')
+        .in('estado', ['aplicado_a_fondo', 'cerrado']);
 
-      const totalRendido = (gastosFondo || []).reduce((sum, g) => sum + g.monto, 0);
-      const saldoRestante = fondoCheck.monto_asignado - totalRendido - (fondoCheck.monto_devuelto || 0);
+      const totalRendidoAprobado = (gastosFondo || []).reduce((sum, g) => sum + g.monto, 0);
+      const saldoRestante = fondoCheck.monto_asignado - totalRendidoAprobado - (fondoCheck.monto_devuelto || 0);
 
       if (monto > saldoRestante) {
         const saldoFmt = new Intl.NumberFormat('es-CL').format(Math.max(0, saldoRestante));
@@ -89,10 +89,8 @@ export async function registrarGasto(prevState: FormState | null, formData: Form
         };
       }
 
-      estadoGasto = 'aplicado_a_fondo';
       finalFondoId = fondoId;
     } else {
-      estadoGasto = 'por_pagar';
       finalFondoId = null;
     }
 
@@ -134,7 +132,7 @@ export async function registrarGasto(prevState: FormState | null, formData: Form
       return { error: `Error al subir la fotografía: ${uploadError.message}` };
     }
 
-    // 4. Registro en tabla 'gastos'
+    // 4. Registro en tabla 'gastos' con estado inicial 'pendiente'
     const { error: insertError } = await supabase.from('gastos').insert({
       user_id: user.id,
       categoria,
@@ -143,7 +141,8 @@ export async function registrarGasto(prevState: FormState | null, formData: Form
       foto_url: filePath,
       tipo_rendicion: tipoRendicion,
       fondo_id: finalFondoId,
-      estado: estadoGasto,
+      estado: 'pendiente',
+      motivo_rechazo: null,
     });
 
     if (insertError) {
@@ -164,7 +163,7 @@ export async function registrarGasto(prevState: FormState | null, formData: Form
     revalidatePath('/admin');
     return {
       success: true,
-      message: `Rendición #${numeroComprobante} guardada exitosamente.`,
+      message: `Rendición #${numeroComprobante} guardada exitosamente. Quedó en estado pendiente de aprobación por el administrador.`,
     };
   } catch (err: any) {
     console.error('Error inesperado en registrarGasto:', err);
@@ -260,7 +259,7 @@ export async function modificarGasto(
       filePath = newFilePath;
     }
 
-    // 4. Actualizar registro en tabla 'gastos'
+    // 4. Actualizar registro en tabla 'gastos' (reinicia a pendiente de aprobación si no está cerrado)
     const rawTipo = formData.get('tipo_rendicion') as string | null;
     const updateData: Record<string, unknown> = {
       categoria,
@@ -269,14 +268,16 @@ export async function modificarGasto(
       foto_url: filePath,
     };
 
+    if (gastoActual.estado !== 'cerrado') {
+      updateData.estado = 'pendiente';
+      updateData.motivo_rechazo = null;
+    }
+
     if (rawTipo === 'anticipo' || rawTipo === 'reembolso') {
       updateData.tipo_rendicion = rawTipo;
       if (rawTipo === 'anticipo') {
         const fId = (formData.get('fondo_id') as string)?.trim() || gastoActual.fondo_id;
         updateData.fondo_id = fId;
-        if (gastoActual.estado !== 'cerrado') {
-          updateData.estado = 'aplicado_a_fondo';
-        }
 
         if (fId) {
           const { data: fCheck } = await supabase
@@ -288,10 +289,11 @@ export async function modificarGasto(
           if (fCheck) {
             const { data: otrosGastos } = await supabase
               .from('gastos')
-              .select('monto')
+              .select('monto, estado')
               .eq('fondo_id', fId)
               .eq('tipo_rendicion', 'anticipo')
-              .neq('id', gastoId);
+              .neq('id', gastoId)
+              .in('estado', ['aplicado_a_fondo', 'cerrado']);
 
             const totalOtros = (otrosGastos || []).reduce((sum, g) => sum + g.monto, 0);
             const saldoDisp = fCheck.monto_asignado - totalOtros - (fCheck.monto_devuelto || 0);
@@ -306,9 +308,6 @@ export async function modificarGasto(
         }
       } else {
         updateData.fondo_id = null;
-        if (gastoActual.estado !== 'cerrado') {
-          updateData.estado = 'por_pagar';
-        }
       }
     }
 
@@ -441,7 +440,7 @@ export async function devolverSobrante(
       return { error: 'Este fondo ya fue cerrado previamente.' };
     }
 
-    // 2. Si devolvió dinero (> 0), subir comprobante de transferencia bancaria
+    // 2. Si devolvió dinero (> 0), subir comprobante de transferencia bancaria (JPG, PNG o PDF)
     let filePath: string | null = null;
     if (montoDevuelto > 0) {
       if (!foto || foto.size === 0) {
@@ -449,7 +448,9 @@ export async function devolverSobrante(
       }
 
       const timestamp = Date.now();
-      filePath = `${user.id}/devolucion_${fondoId}_${timestamp}.jpg`;
+      const isPdf = foto.type === 'application/pdf' || foto.name.toLowerCase().endsWith('.pdf');
+      const ext = isPdf ? 'pdf' : 'jpg';
+      filePath = `${user.id}/devolucion_${fondoId}_${timestamp}.${ext}`;
 
       const arrayBuffer = await foto.arrayBuffer();
       const fileBuffer = Buffer.from(arrayBuffer);
@@ -457,7 +458,7 @@ export async function devolverSobrante(
       const { error: uploadError } = await supabase.storage
         .from('comprobantes')
         .upload(filePath, fileBuffer, {
-          contentType: foto.type || 'image/jpeg',
+          contentType: foto.type || (isPdf ? 'application/pdf' : 'image/jpeg'),
           upsert: false,
         });
 
@@ -485,12 +486,13 @@ export async function devolverSobrante(
       return { error: `Error al cerrar el fondo: ${updateError.message}` };
     }
 
-    // 4. Actualizar todas las boletas vinculadas a este fondo a estado 'cerrado'
+    // 4. Actualizar todas las boletas aprobadas vinculadas a este fondo a estado 'cerrado'
     await supabase
       .from('gastos')
       .update({ estado: 'cerrado' })
       .eq('fondo_id', fondoId)
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .eq('estado', 'aplicado_a_fondo');
 
     revalidatePath('/rendiciones');
     revalidatePath('/admin');

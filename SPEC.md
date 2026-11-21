@@ -219,3 +219,17 @@ Registro de pagos parciales o abonos realizados por la empresa para cubrir gasto
    - **Trazabilidad de Fondos Cerrados y Devoluciones:**
      - Cierre atómico: al realizar la devolución del sobrante en `devolverSobrante`, se actualiza el fondo y sus boletas hijas a estado `'cerrado'`.
      - Historial accesible de fondos cerrados en el panel del colaborador para revisar devoluciones y comprobantes de transferencias bancarias en cualquier momento.
+
+9. **Fase 9: Flujo de Aprobación Admin, Recargas sobre el Mismo Folio y Cámara/Galería en Devolución**
+   - **Flujo de Aprobación / Rechazo de Rendiciones:**
+     - Toda nueva rendición (`registrarGasto`) inicia en estado `'pendiente'`.
+     - Los anticipos vinculados a un fondo no descuentan saldo ni computan en `total_rendido` hasta que el administrador los aprueba (`aprobarGasto` -> `'aplicado_a_fondo'`).
+     - Los gastos propios de reembolso inician en `'pendiente'` y al ser aprobados pasan a `'por_pagar'`.
+     - Si una rendición es rechazada (`rechazarGasto`), pasa a estado `'rechazado'` con registro del motivo (`motivo_rechazo`) visible para el colaborador, sin afectar balances contables ni saldos de fondos.
+     - El panel de administración incluye botones de acción rápida para aprobar o rechazar con modal para ingreso de motivo, además de filtros por estado contable.
+   - **Recargas Acumuladas sobre el Mismo Fondo (`#F-xxx`):**
+     - Al asignar un fondo a un colaborador con fondo activo o por devolver, se suma el nuevo monto al `monto_asignado` del mismo registro y se registra en `recargas_fondos` (tabla con `tipo: 'inicial' | 'recarga'`).
+     - La Cartola (`ModalCartolaDetalle`) muestra cronológicamente tanto la asignación inicial como cada recarga subsiguiente, boletas aprobadas descontadas y devoluciones.
+   - **Selector Dual de Cámara y Galería/PDF en Devolución de Sobrante:**
+     - En el modal de devolución de sobrante y conciliación del colaborador se ofrecen dos opciones: "📸 Tomar Foto (Cámara)" con `capture="environment"` o "📁 Galería o Archivo PDF" (`accept="image/*,application/pdf"` sin forzar cámara).
+     - Soporte para adjuntar comprobantes en imagen y documentos PDF sin fallos de compresión.

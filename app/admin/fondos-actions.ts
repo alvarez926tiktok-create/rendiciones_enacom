@@ -27,7 +27,7 @@ async function verificarAdmin() {
   return profile?.rol === 'admin' ? user : null;
 }
 
-// 1. Asignar fondo / viático a un empleado
+// 1. Asignar fondo / viático a un empleado (o recargar sobre fondo activo)
 export async function asignarFondo(
   prevState: FondoActionState | null,
   formData: FormData
@@ -56,18 +56,76 @@ export async function asignarFondo(
   try {
     const supabase = await createClient();
 
-    const { error: insertError } = await supabase.from('fondos_asignados').insert({
-      user_id: userId,
-      admin_id: adminUser.id,
-      motivo,
-      monto_asignado: montoAsignado,
-      estado: 'activo',
-      monto_devuelto: 0,
-    });
+    // 1. Verificar si el colaborador ya tiene un fondo activo o por devolver
+    const { data: fondoActivo } = await supabase
+      .from('fondos_asignados')
+      .select('id, correlativo, monto_asignado, motivo, estado')
+      .eq('user_id', userId)
+      .in('estado', ['activo', 'por_devolver'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (fondoActivo) {
+      // Recarga sobre el mismo fondo
+      const nuevoTotal = fondoActivo.monto_asignado + montoAsignado;
+      const { error: updateError } = await supabase
+        .from('fondos_asignados')
+        .update({
+          monto_asignado: nuevoTotal,
+          estado: 'activo',
+        })
+        .eq('id', fondoActivo.id);
+
+      if (updateError) {
+        return { error: `Error al recargar fondo: ${updateError.message}` };
+      }
+
+      // Registrar evento de recarga en recargas_fondos
+      await supabase.from('recargas_fondos').insert({
+        fondo_id: fondoActivo.id,
+        admin_id: adminUser.id,
+        monto: montoAsignado,
+        motivo,
+        tipo: 'recarga',
+      });
+
+      revalidatePath('/admin');
+      revalidatePath('/rendiciones');
+      return {
+        success: true,
+        message: `Recarga de $${new Intl.NumberFormat('es-CL').format(montoAsignado)} agregada exitosamente al fondo existente. Nuevo total asignado: $${new Intl.NumberFormat('es-CL').format(nuevoTotal)}.`,
+      };
+    }
+
+    // Si no tiene fondo activo, crear uno nuevo
+    const { data: nuevoFondo, error: insertError } = await supabase
+      .from('fondos_asignados')
+      .insert({
+        user_id: userId,
+        admin_id: adminUser.id,
+        motivo,
+        monto_asignado: montoAsignado,
+        estado: 'activo',
+        monto_devuelto: 0,
+      })
+      .select('id')
+      .single();
 
     if (insertError) {
       console.error('Error al asignar fondo:', insertError);
       return { error: `Error al registrar fondo: ${insertError.message}` };
+    }
+
+    if (nuevoFondo) {
+      // Registrar asignación inicial en recargas_fondos
+      await supabase.from('recargas_fondos').insert({
+        fondo_id: nuevoFondo.id,
+        admin_id: adminUser.id,
+        monto: montoAsignado,
+        motivo,
+        tipo: 'inicial',
+      });
     }
 
     revalidatePath('/admin');
@@ -335,5 +393,109 @@ export async function cerrarFondoDefinitivo(fondoId: string): Promise<FondoActio
     return { success: true, message: 'Fondo cerrado definitivamente.' };
   } catch (err: any) {
     return { error: err.message || 'Error desconocido' };
+  }
+}
+
+// 6. Aprobar Gasto / Rendición (Admin)
+export async function aprobarGasto(gastoId: string): Promise<FondoActionState> {
+  const adminUser = await verificarAdmin();
+  if (!adminUser) {
+    return { error: 'Acceso no autorizado. Se requieren permisos de administrador.' };
+  }
+
+  if (!gastoId) {
+    return { error: 'Identificador de rendición no válido.' };
+  }
+
+  try {
+    const supabase = await createClient();
+
+    // Obtener información del gasto
+    const { data: gasto, error: fetchError } = await supabase
+      .from('gastos')
+      .select('id, tipo_rendicion, fondo_id, monto, numero_comprobante')
+      .eq('id', gastoId)
+      .single();
+
+    if (fetchError || !gasto) {
+      return { error: 'La rendición no fue encontrada.' };
+    }
+
+    const nuevoEstado = gasto.tipo_rendicion === 'anticipo' ? 'aplicado_a_fondo' : 'por_pagar';
+
+    const { error: updateError } = await supabase
+      .from('gastos')
+      .update({
+        estado: nuevoEstado,
+        motivo_rechazo: null,
+      })
+      .eq('id', gastoId);
+
+    if (updateError) {
+      return { error: `Error al aprobar rendición: ${updateError.message}` };
+    }
+
+    revalidatePath('/admin');
+    revalidatePath('/rendiciones');
+    return {
+      success: true,
+      message: `Comprobante #${gasto.numero_comprobante} aprobado exitosamente (${nuevoEstado === 'aplicado_a_fondo' ? 'descontado del fondo' : 'listo para pago'}).`,
+    };
+  } catch (err: any) {
+    console.error('Error inesperado en aprobarGasto:', err);
+    return { error: err.message || 'Error desconocido al aprobar la rendición.' };
+  }
+}
+
+// 7. Rechazar Gasto / Rendición (Admin)
+export async function rechazarGasto(gastoId: string, motivo: string): Promise<FondoActionState> {
+  const adminUser = await verificarAdmin();
+  if (!adminUser) {
+    return { error: 'Acceso no autorizado. Se requieren permisos de administrador.' };
+  }
+
+  if (!gastoId) {
+    return { error: 'Identificador de rendición no válido.' };
+  }
+
+  const motivoTrimmed = motivo?.trim();
+  if (!motivoTrimmed) {
+    return { error: 'Debes indicar el motivo del rechazo para informar al colaborador.' };
+  }
+
+  try {
+    const supabase = await createClient();
+
+    const { data: gasto, error: fetchError } = await supabase
+      .from('gastos')
+      .select('id, numero_comprobante')
+      .eq('id', gastoId)
+      .single();
+
+    if (fetchError || !gasto) {
+      return { error: 'La rendición no fue encontrada.' };
+    }
+
+    const { error: updateError } = await supabase
+      .from('gastos')
+      .update({
+        estado: 'rechazado',
+        motivo_rechazo: motivoTrimmed,
+      })
+      .eq('id', gastoId);
+
+    if (updateError) {
+      return { error: `Error al rechazar rendición: ${updateError.message}` };
+    }
+
+    revalidatePath('/admin');
+    revalidatePath('/rendiciones');
+    return {
+      success: true,
+      message: `Comprobante #${gasto.numero_comprobante} ha sido rechazado.`,
+    };
+  } catch (err: any) {
+    console.error('Error inesperado en rechazarGasto:', err);
+    return { error: err.message || 'Error desconocido al rechazar la rendición.' };
   }
 }

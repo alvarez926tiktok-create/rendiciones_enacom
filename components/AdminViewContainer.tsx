@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import PanelAdmin, { type GastoAdminItem, type ProfileItem, type FondoAdminItem } from '@/components/PanelAdmin';
 import GestionUsuarios from '@/components/GestionUsuarios';
-import { type AbonoItem } from '@/components/ModalCartolaDetalle';
+import { type AbonoItem, type RecargaFondoItem } from '@/components/ModalCartolaDetalle';
 
 interface AdminViewContainerProps {
   gastos: GastoAdminItem[];
   profiles: ProfileItem[];
   fondos: FondoAdminItem[];
   abonos?: AbonoItem[];
+  recargas?: RecargaFondoItem[];
 }
 
 export default function AdminViewContainer({
@@ -17,6 +18,7 @@ export default function AdminViewContainer({
   profiles,
   fondos,
   abonos = [],
+  recargas = [],
 }: AdminViewContainerProps) {
   const [activeTab, setActiveTab] = useState<'rendiciones' | 'personal'>('rendiciones');
 
@@ -63,7 +65,7 @@ export default function AdminViewContainer({
 
       {/* Vista Activa */}
       {activeTab === 'rendiciones' ? (
-        <PanelAdmin gastos={gastos} profiles={profiles} fondos={fondos} abonos={abonos} />
+        <PanelAdmin gastos={gastos} profiles={profiles} fondos={fondos} abonos={abonos} recargas={recargas} />
       ) : (
         <GestionUsuarios profiles={profiles} />
       )}

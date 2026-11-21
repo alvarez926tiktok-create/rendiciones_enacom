@@ -3,7 +3,7 @@
 import { useState, useMemo, useActionState, useEffect, useRef } from 'react';
 import { modificarGasto, eliminarGasto, type FormState } from '@/app/rendiciones/actions';
 import { formatFolioFondo, formatFolioGasto, formatFolioReembolso } from '@/lib/folios';
-import ModalCartolaDetalle, { type AbonoItem, type FondoDetalleItem, type GastoDetalleItem } from '@/components/ModalCartolaDetalle';
+import ModalCartolaDetalle, { type AbonoItem, type FondoDetalleItem, type GastoDetalleItem, type RecargaFondoItem } from '@/components/ModalCartolaDetalle';
 
 export type GastoItem = {
   id: string;
@@ -15,7 +15,8 @@ export type GastoItem = {
   foto_url: string;
   tipo_rendicion: 'anticipo' | 'reembolso';
   fondo_id: string | null;
-  estado: 'aplicado_a_fondo' | 'por_pagar' | 'cerrado';
+  estado: 'pendiente' | 'aplicado_a_fondo' | 'por_pagar' | 'rechazado' | 'cerrado';
+  motivo_rechazo?: string | null;
   comprobante_pago_url: string | null;
   created_at: string;
   signedUrl?: string | null;
@@ -26,6 +27,7 @@ interface HistorialGastosProps {
   gastos: GastoItem[];
   abonos?: AbonoItem[];
   fondos?: FondoDetalleItem[];
+  recargas?: RecargaFondoItem[];
   nombreUsuario?: string;
   areaUsuario?: string;
 }
@@ -45,6 +47,7 @@ export default function HistorialGastos({
   gastos,
   abonos = [],
   fondos = [],
+  recargas = [],
   nombreUsuario = 'Colaborador',
   areaUsuario = 'Terreno',
 }: HistorialGastosProps) {
@@ -396,14 +399,24 @@ export default function HistorialGastos({
                     </span>
                   )}
 
+                  {gasto.estado === 'pendiente' && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                      ⏳ Pendiente de Aprobación
+                    </span>
+                  )}
                   {gasto.estado === 'aplicado_a_fondo' && (
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                      ✓ Aplicado a Fondo
+                      ✓ Aprobado (Aplicado a Fondo)
                     </span>
                   )}
                   {gasto.estado === 'por_pagar' && (
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-yellow-50 text-yellow-800 border border-yellow-200">
-                      ⏳ Por Pagar {tieneAbonosParciales ? '(Con Abonos)' : ''}
+                      ⏳ Aprobado (Por Pagar {tieneAbonosParciales ? '- Con Abonos' : ''})
+                    </span>
+                  )}
+                  {gasto.estado === 'rechazado' && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-100 text-red-900 border border-red-300">
+                      ✕ Rechazada {gasto.motivo_rechazo ? `: ${gasto.motivo_rechazo}` : ''}
                     </span>
                   )}
                   {gasto.estado === 'cerrado' && (
@@ -440,8 +453,8 @@ export default function HistorialGastos({
                       </button>
                     )}
 
-                    {/* Editar (solo si no está cerrado) */}
-                    {gasto.estado !== 'cerrado' && (
+                    {/* Editar (solo si está pendiente o rechazado para corregir) */}
+                    {(gasto.estado === 'pendiente' || gasto.estado === 'rechazado') && (
                       <button
                         type="button"
                         onClick={() => {
@@ -454,8 +467,8 @@ export default function HistorialGastos({
                       </button>
                     )}
 
-                    {/* Eliminar (solo si no está cerrado) */}
-                    {gasto.estado !== 'cerrado' && (
+                    {/* Eliminar (solo si está pendiente o rechazado) */}
+                    {(gasto.estado === 'pendiente' || gasto.estado === 'rechazado') && (
                       <button
                         type="button"
                         onClick={() => {
@@ -516,6 +529,7 @@ export default function HistorialGastos({
             area_empleado: areaUsuario,
           }}
           abonos={abonosPorGasto.get(selectedGastoCartola.id) || []}
+          recargas={recargas}
           isAdmin={false}
           onClose={() => setSelectedGastoCartola(null)}
           onVerFoto={(url, titulo) => {
@@ -537,6 +551,7 @@ export default function HistorialGastos({
               nombre_empleado: nombreUsuario,
               area_empleado: areaUsuario,
             }))}
+          recargas={recargas}
           isAdmin={false}
           onClose={() => setSelectedFondoCartola(null)}
           onVerFoto={(url, titulo) => {

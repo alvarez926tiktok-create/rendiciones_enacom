@@ -4,7 +4,7 @@ import HeaderEmpleado from '@/components/HeaderEmpleado';
 import FormularioGasto from '@/components/FormularioGasto';
 import HistorialGastos, { type GastoItem } from '@/components/HistorialGastos';
 import PanelSaldosEmpleado, { type FondoAsignadoActivo } from '@/components/PanelSaldosEmpleado';
-import { type AbonoItem, type GastoDetalleItem, type FondoDetalleItem } from '@/components/ModalCartolaDetalle';
+import { type AbonoItem, type GastoDetalleItem, type FondoDetalleItem, type RecargaFondoItem } from '@/components/ModalCartolaDetalle';
 
 export default async function RendicionesPage() {
   const supabase = await createClient();
@@ -81,13 +81,40 @@ export default async function RendicionesPage() {
   let totalRendidoEnFondo = 0;
   if (fondoActivoRaw && gastos) {
     totalRendidoEnFondo = gastos
-      .filter((g) => g.tipo_rendicion === 'anticipo' && g.fondo_id === fondoActivoRaw.id)
+      .filter(
+        (g) =>
+          g.tipo_rendicion === 'anticipo' &&
+          g.fondo_id === fondoActivoRaw.id &&
+          (g.estado === 'aplicado_a_fondo' || g.estado === 'cerrado')
+      )
       .reduce((sum, g) => sum + g.monto, 0);
   }
 
   const saldoRestante = fondoActivoRaw
     ? fondoActivoRaw.monto_asignado - totalRendidoEnFondo - (fondoActivoRaw.monto_devuelto || 0)
     : 0;
+
+  // 4.1 Obtener historial de asignaciones y recargas de los fondos del usuario
+  const fondoIds = todosLosFondos.map((f) => f.id);
+  let recargasRaw: any[] = [];
+  if (fondoIds.length > 0) {
+    const { data: recargasData } = await supabase
+      .from('recargas_fondos')
+      .select('*')
+      .in('fondo_id', fondoIds)
+      .order('created_at', { ascending: true });
+    recargasRaw = recargasData || [];
+  }
+
+  const recargas: RecargaFondoItem[] = recargasRaw.map((r) => ({
+    id: r.id,
+    fondo_id: r.fondo_id,
+    admin_id: r.admin_id,
+    monto: r.monto,
+    motivo: r.motivo,
+    tipo: r.tipo as 'inicial' | 'recarga',
+    created_at: r.created_at,
+  }));
 
   // 5. Calcular total de reembolsos acumulados pendientes (restando abonos parciales)
   const totalReembolsosPendientes = (gastos || [])
@@ -146,7 +173,8 @@ export default async function RendicionesPage() {
       foto_url: g.foto_url,
       tipo_rendicion: (g.tipo_rendicion as any) || 'reembolso',
       fondo_id: g.fondo_id || null,
-      estado: (g.estado as any) || 'por_pagar',
+      estado: (g.estado as any) || 'pendiente',
+      motivo_rechazo: g.motivo_rechazo || null,
       comprobante_pago_url: g.comprobante_pago_url || null,
       created_at: g.created_at,
       signedUrl: signedMap.get(g.foto_url) || null,
@@ -191,7 +219,8 @@ export default async function RendicionesPage() {
       foto_url: g.foto_url,
       tipo_rendicion: (g.tipo_rendicion as any) || 'reembolso',
       fondo_id: g.fondo_id || null,
-      estado: (g.estado as any) || 'por_pagar',
+      estado: (g.estado as any) || 'pendiente',
+      motivo_rechazo: g.motivo_rechazo || null,
       comprobante_pago_url: g.comprobante_pago_url || null,
       created_at: g.created_at,
       signedUrl: null,
@@ -284,6 +313,7 @@ export default async function RendicionesPage() {
               fondoActivo={fondoActivoData}
               totalReembolsosPendientes={totalReembolsosPendientes}
               gastosVinculados={gastosVinculadosFondo}
+              recargas={recargas}
               fondosHistoricos={fondosHistoricosCerrados}
               todosLosGastos={todosLosGastosDetalle}
               nombreUsuario={profile?.nombre}
@@ -311,6 +341,7 @@ export default async function RendicionesPage() {
               gastos={gastosConUrls}
               abonos={abonosConUrls}
               fondos={fondosConUrls}
+              recargas={recargas}
               nombreUsuario={profile?.nombre}
               areaUsuario={profile?.area}
             />
